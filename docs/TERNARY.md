@@ -84,6 +84,36 @@ hardware, because it is a switch left open.
 
 ---
 
+## The board then went and proved him right
+
+This section was written before the model ran. Once it did, the measurement
+settled the argument.
+
+`docs/HARDWARE-RESULTS.md`: **1.020 s/token**, against a prediction of 0.1–0.2 s
+for a Nios II/f with hardware floating point. The FPU is present and active —
+custom instructions 252–255, confirmed in `system.h`. So the arithmetic is *not*
+the problem.
+
+The cause, read out of the generated system rather than guessed:
+
+```
+ALT_CPU_DCACHE_SIZE   0        <- there is no data cache
+```
+
+Every one of the ~259,000 weight reads per token is an individual **uncached**
+transaction to a **16-bit** SDRAM. The processor spends its life waiting for
+memory, not multiplying.
+
+Which is exactly what Eugene said: *"the bytes go through the I/O for this."*
+
+That reframes his whole suggestion. Ternary is not primarily a way to avoid
+multipliers on a chip that only has 144 of them — though it is that too. On
+**this** machine its bigger win is that **1.58 bits per weight instead of 32 is a
+20× reduction in the traffic that is actually the bottleneck.**
+
+We measured the bottleneck. His suggestion targets it directly. That is a
+stronger endorsement than agreeing with it in the abstract.
+
 ## Is this what we should have done today?
 
 **No — and being honest about why is the point.**
