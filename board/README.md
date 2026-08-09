@@ -1,95 +1,169 @@
-# DE10-Nano bring-up
+# DE10-Lite bring-up
 
-Goal of this half: a measured CPU-only tokens/sec baseline, recorded before
-anyone touches Verilog. If this is not done by the 14:00 check-in, drop the FPGA
-half and ship the benchmark alone.
+> **Corrected 2026-08-09, midday.** The board Justin brought is a **DE10-Lite**,
+> not a DE10-Nano. Identified from photographs: the silkscreen reads `DE10-Lite`
+> and the die is marked **`10M50DAF484C7G`**. Everything in this file was rewritten
+> for that hardware. The previous version assumed an ARM core that does not exist.
 
-## Step 0: confirm which board it is
+## What this board actually is
 
-Read the silkscreen. Three different boards are called "DE10":
+| | |
+|---|---|
+| FPGA | Intel MAX 10 `10M50DAF484C7G`, 55 nm, 484-pin FBGA, speed grade 7 |
+| Logic | **50 K logic elements** |
+| On-chip RAM | **1,638 Kbit M9K ≈ 205 KB** |
+| Multipliers | **144 × 18×18** |
+| PLLs | 4 |
+| External RAM | **64 MB SDRAM** (ISSI, 32M × 16) |
+| I/O | VGA, 40-pin GPIO, Arduino Uno R3 headers, ADXL345 accelerometer |
+| Human I/O | 10 slide switches, 10 red LEDs, six 7-segment displays, 2 buttons |
+| Programming | on-board USB-Blaster over mini-USB |
 
-| Board | SoC | Runs Linux? | Usable here? |
-|---|---|---|---|
-| **DE10-Nano** | Cyclone V `5CSEBA6` | yes, dual Cortex-A9 | **yes, this is the plan** |
-| **DE10-Standard** | Cyclone V | yes | yes, same plan |
-| **DE10-Lite** | MAX 10 | **no ARM at all** | no, abandon the ARM half |
+**What it does NOT have — this is the whole point:**
 
-Quick physical check: Nano and Standard have an ethernet jack and a micro-SD
-slot. Lite has neither.
+- ❌ No ARM Cortex-A9, no HPS. MAX 10 is a pure FPGA, not an SoC FPGA.
+- ❌ No Linux. Nothing to SSH into. No shell.
+- ❌ No ethernet.
+- ❌ No micro-SD card. **No filesystem — `fopen()` does not exist.**
 
-## Step 1: shell on the board
+So there is no `0xFF200000` bridge, no `/dev/mem`, no `scp`. Any instruction that
+begins "boot Linux and run the binary" is describing different hardware.
 
-Serial console over the mini-USB port, 115200 baud:
+## Which is better news than it sounds
 
-```bash
-ls /dev/tty.usbserial* /dev/tty.SLAB_USBtoUART 2>/dev/null && screen /dev/tty.usbserial-* 115200
+On a DE10-Nano the ARM does the work and the FPGA is a bystander. Here there is
+no processor at all until we build one. That makes the claim stronger, not weaker:
+
+> **We synthesized a CPU into the fabric and ran a language model on it. No ARM,
+> no operating system — the entire computer is something we generated.**
+
+## Step 0 — confirm the toolchain, not the board
+
+The board ID is settled. What is NOT settled is whether Quartus can talk to it.
+
+```
+jtagconfig
 ```
 
-Terasic's DE10-Nano Linux console SD image works. A MiSTer SD card also works,
-it is Linux underneath.
+Expect a `USB-Blaster` listing a `10M50DA` device. If that fails it is a driver
+install, and you want to find that out now rather than at 18:00.
 
-Once you have a prompt, get on ethernet so you can `ssh` and `scp` instead of
-fighting a serial terminal all day. Then confirm the architecture:
+**Quartus does not run on macOS.** Synthesis happens on Justin's machine only.
+That single fact fixes the division of labour for the entire day.
 
-```bash
-uname -m && nproc && free -m && grep -i features /proc/cpuinfo
+The board arrives already running its factory demo (7-segments lit, POWER GOOD
+green), so "does it power on" is already answered.
+
+## Step 1 — the model, and why the old one is dead
+
+`stories15M` cannot run here. Not "slowly" — at all.
+
+| | params | fp32 | int8 | MACs / token | verdict |
+|---|---|---|---|---|---|
+| **stories260K** | 292 K | **1.03 MB** | 0.29 MB | **0.26 M** | ✅ |
+| stories15M | 24.4 M | **97 MB** | 24.4 MB | 15.2 M | ❌ |
+
+`stories15M` is 97 MB in fp32, which **exceeds the board's 64 MB of SDRAM**. Its
+32,000-entry embedding table dominates the parameter count. Even int8 at 24 MB, it
+needs 15.2 M MACs per token, which is seconds per token on any soft core.
+
+`stories260K` is `dim=64, hidden=172, 5 layers, 8 heads (4 KV), vocab=512, ctx=512`
+and it writes readable stories:
+
+> *Once upon a time, there was a little girl named Lily. She loved to play outside
+> in the sun. One day, Lily's mom told her to...*
+
+### SDRAM budget
+
+```
+weights (fp32)     1031.8 KB
+tokenizer             6.1 KB
+runtime state       660.8 KB   activations + KV cache, full 512 context
+────────────────────────────
+TOTAL              1698.7 KB   of 65536 KB   =  2.6 %
 ```
 
-You want `armv7l`. **32-bit ARM.** Nothing built for `aarch64` will run, and
-llama.cpp's good ARM kernels target ARMv8, which is why we are not using it.
+Note the on-chip M9K (205 KB) is too small even for the int8 weights, so the model
+lives in SDRAM and the SDRAM controller is on the critical path.
 
-## Step 2: llama2.c baseline
+## Step 2 — no filesystem means the model is compiled in
 
-```bash
-git clone https://github.com/karpathy/llama2.c && cd llama2.c
-wget https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
-make runq
+`run.c` opens the checkpoint with `fopen`/`mmap`. There is no filesystem here, so
+the weights and tokenizer are emitted as C arrays and linked into the program:
+
+```
+embed/model260k.h    1,056,540 byte payload   (8-byte aligned)
+embed/tok512.h           6,227 byte payload
 ```
 
-Use the **quantized** build (`runq`, Q8_0 int8), not `run`. Int8 maps onto DSP
-blocks cleanly; fp32 does not. It is also already ~3x faster and 4x smaller on
-the CPU, for free.
+Generated by `tools/embed_model.py`. They are 8-byte aligned so the `float *` cast
+is safe on a 32-bit core.
 
-Start with **stories15M**, not stories110M. We want fast iterations, not a
-better novelist.
+## Step 3 — the soft core
 
-```bash
-./runq stories15M_q80.bin -n 256 -i "Once upon a time"
-```
+This is the open decision. Candidates, in the order we are evaluating them:
 
-It prints tok/s at the end. Expect roughly **10 to 30 tok/s**.
+| Core | Free? | Notes |
+|---|---|---|
+| **NEORV32** | yes, BSD | RISC-V, strong Quartus support, optional `M` (hardware multiply) |
+| **Nios V/m** | yes | Intel's RISC-V; check MAX 10 support in the Quartus version installed |
+| **Nios II/e** | yes | unpipelined and slow; also deprecated in newer Quartus |
+| VexRiscv / PicoRV32 | yes | plain Verilog, no Platform Designer needed |
 
-> **Write that number in `board/baseline.txt` and commit it.** It is half the
-> presentation. Everything after this point is measured against it.
+Rough arithmetic at 0.26 M MACs/token, assuming ~3 instructions per MAC:
 
-## Step 3: the hook
+| core throughput | tokens/sec |
+|---|---|
+| ~1 MIPS (Nios II/e class) | ~1.3 |
+| ~10 MIPS (pipelined RV32 + hardware multiply) | ~13 |
+| ~50 MIPS (cached RV32 @ 100 MHz) | ~64 |
 
-`runq.c` funnels essentially all inference cycles through one function:
+Even the pessimistic row is a watchable demo.
 
-```c
-void matmul(float* xout, float* x, float* w, int n, int d)
-```
+### The open risk: floating point
 
-That is the only thing we replace. The FPGA call goes in that function body and
-nowhere else.
+`run.c` is fp32 throughout — `expf`, `sqrtf`, `powf`. Small soft cores have **no
+FPU**, so this becomes software-emulated float. Three ways out, cheapest first:
 
-## Step 4: reaching the fabric from Linux
+1. Accept soft-float. At 0.26 M MACs/token it may simply be fast enough.
+2. Use `runq.c` (int8 weights) so the multiply is integer and only scaling is float.
+3. Port to fixed-point Q16.16 — most work, removes the FPU question entirely.
 
-The Lightweight HPS-to-FPGA bridge is memory-mapped at **`0xFF200000`**. From
-userspace, `mmap` `/dev/mem` at that offset and control registers become plain
-pointer writes. (The wider HPS-to-FPGA bridge sits at `0xC0000000` if we end up
-streaming weights rather than poking registers.)
+Resolve this before committing a synthesis slot.
 
-Sanity-check the bridge with a trivial fabric design (write a value, read it
-back) **before** wiring up any MAC array. Debugging "is the bridge alive" and
-"is my dot product right" at the same time costs a synthesis slot you do not
-have.
+## Step 4 — the economics that govern the day
 
-## Synthesis budget
+**The critical shortcut:** once the SoC is synthesized *once*, the C program is
+re-downloaded over JTAG **without re-running synthesis**. Software iteration drops
+from ~25 minutes to seconds.
 
-Quartus compiles for this part in **15 to 30 minutes**. That is roughly **12 to
-15 runs in a working day, total.**
+So the day is not "12 synthesis runs". It is *one or two* synthesis runs to get a
+working SoC, then unlimited fast software iteration on top of it.
 
-Every module passes `iverilog` simulation before it is allowed to consume a
-synthesis slot. Simulation is ~1 second and free. See `bench/` for the harness
-that already does this.
+Budget accordingly: get the SoC right, then live in C.
+
+Every Verilog module still simulates in `iverilog` before it is allowed to consume
+a synthesis slot. Simulation is ~1 second and free. `bench/` already enforces this.
+
+## Step 5 — getting output off the board
+
+No ethernet, no serial port. Options:
+
+| Path | Works? |
+|---|---|
+| **JTAG UART** to a host terminal | yes, but needs the soft core + Quartus tooling → Justin's machine only |
+| 7-segment displays | trivial, no host, good for a MAC-count or token-count readout |
+| GPIO → USB-serial adapter / Arduino bridge | works, needs a spare part |
+
+**Recommended wiring for the demo:** Justin's machine reads tokens over JTAG UART
+and POSTs them to Wilson's laptop over the venue LAN; Wilson's laptop serves the
+public page through a Cloudflare tunnel. That satisfies Sundai's "get off
+localhost" rule with no extra hardware.
+
+## Kill criteria
+
+- **14:00** — if `jtagconfig` has not seen the board, stop and fix drivers.
+- **16:00** — if no soft core is running *any* C program and printing over JTAG,
+  abandon the LLM-on-fabric path and ship the Verilog benchmark plus a hardware
+  MAC array demo on the 7-segments.
+- **19:00** — deploy whatever exists. Freeze.
