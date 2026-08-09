@@ -27,3 +27,7 @@ simulation/
 # checkpoints are re-downloadable; the generated headers are NOT ignored --
 # Justin needs to `git pull` them and compile, without running python.
 models/
+
+# generated / vendored
+vendor/run.c
+dist/*.tar.gz
