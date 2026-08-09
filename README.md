@@ -1,8 +1,10 @@
 # vibe-silicon
 
-**We synthesized a CPU into an FPGA and ran a language model on it.**
-No ARM. No operating system. The entire computer is fabric we generated — and the
-Verilog was written by an LLM.
+**We programmed a soft CPU into an FPGA's fabric and ran a language model on it.**
+No ARM. No operating system. The processor is Intel's prebuilt Nios II core — not
+designed by us, and not LLM-written. See
+[what's ours, what's Intel's, and what's LLM-written](#whats-ours-whats-intels-and-whats-llm-written)
+below before repeating any claim from this README on stage.
 
 Sundai Hack 135 — Foundation Models for the Physical World (Aug 9, 2026)
 
@@ -31,6 +33,27 @@ the page never claims a replay is live.
 > [`board/README.md`](board/README.md) for the full bring-up.
 
 ---
+
+## What's ours, what's Intel's, and what's LLM-written
+
+Four separate things, easy to conflate into one story. They aren't one story.
+
+| | who built it | status |
+|---|---|---|
+| Nios II core, SDRAM controller, JTAG UART — what actually runs the model | **Intel**, prebuilt ("DE10-Lite Computer", FPGA University Program) | ✅ running |
+| Bare-metal C port + getting the model to run on that core | us | ✅ done — byte-identical output, see [HARDWARE-RESULTS.md](docs/HARDWARE-RESULTS.md) |
+| Accelerator Verilog (`int8_mac`, `dot4_int8`, `mac_array8`), graded in simulation | Opus 5 / Sonnet 5 / Haiku 4.5, via `bench/harness.py` | ✅ done — see [bench/FINDINGS.md](bench/FINDINGS.md); **headline number not trustworthy**, read the caveats |
+| That same accelerator on real silicon — standalone bitstream, switches/LEDs, not touching the model system | LLM-written, human-reviewed | 🔄 in progress |
+
+**We did not design a CPU.** We configured Intel's prebuilt core into fabric that
+had none, and wrote the bare-metal software around it.
+
+**The language model does not run through any LLM-written Verilog.** The
+accelerator work is a separate, disconnected proof that an LLM-written module
+works on real hardware — not an optimization sitting inside the model's compute
+path, and not planned to become one: the board is bandwidth-bound, not
+compute-bound (no data cache — see HARDWARE-RESULTS.md), so wiring an
+accelerator into `matmul()` would not speed up generation even if we built it.
 
 ## What the board is
 
@@ -89,8 +112,6 @@ It also writes real sentences:
    │                                           │
    │   soft Nios II/f core ─►  SDRAM ctrl ──► 64 MB SDRAM
    │        │                                  │
-   │        └──► int8 MAC array  ◄─ LLM-written Verilog
-   │        │                                  │
    │        └──► JTAG UART ──► tokens          │
    └───────────────────────────────────────────┘
                   │
@@ -99,6 +120,11 @@ It also writes real sentences:
                                                  (public page, anyone's browser)
 ```
 
+This is the complete data path for the model. **There is no accelerator in it** —
+`matmul()` runs entirely on the Nios II core, nothing is offloaded. The
+LLM-written accelerator lives on a separate, standalone bitstream (see the table
+above); it does not appear in this diagram because it is not wired to any of it.
+
 The core is **Nios II/f**, Intel's soft processor — not RISC-V. Nothing listens on
 the venue network: the bridge POSTs outward, so there is no inbound port, no
 tunnel, and nothing for conference wifi to block.
@@ -106,31 +132,33 @@ tunnel, and nothing for conference wifi to block.
 **Quartus does not run on macOS.** Synthesis is Justin's machine only. That fixes
 who does what for the whole day.
 
-## Two deliverables, one pipeline
+## Two deliverables, plus one bonus proof
 
-1. **A language model running on hardware we generated.** Tokens/sec on a soft core
-   we placed into fabric, with the inner `matmul()` optionally handed to a
-   dedicated int8 MAC array.
+1. **A language model running on a soft core we programmed into fabric.** The
+   core itself is Intel's, prebuilt — see the table above. `matmul()` is not
+   handed to anything; it runs entirely on the Nios II.
 2. **A benchmark: how good are current LLMs at writing synthesizable Verilog?**
    Every generated module is logged — did it lint, simulate, pass its testbench,
-   synthesize, and at what resource cost.
+   synthesize, and at what resource cost. Simulation only; see
+   [bench/FINDINGS.md](bench/FINDINGS.md) before quoting the headline number.
 
-The second is insurance. If the SoC fights us, the benchmark still ships, and the
-three benchmark tasks (`int8_mac`, `dot4_int8`, `mac_array8`) are the accelerator's
-own building blocks — so benchmarking *is* building.
+**Bonus, in progress:** proving one of the benchmark's own modules (`mac_array8`)
+on real silicon — a standalone bitstream driven by switches/LEDs, disconnected
+from the language-model system in deliverable 1. Not required for either
+deliverable above; it exists to make "an LLM wrote Verilog that runs on this
+chip" literally true on hardware, not only in simulation.
 
 ## Repo layout
 
 ```
 board/      DE10-Lite bring-up: toolchain, model, soft core, kill criteria
-bench/      LLM-writes-Verilog benchmark harness
-  tasks/    one directory per task: spec.md + tb.v
+bench/      LLM-writes-Verilog/VHDL benchmark harness
+  tasks/    one directory per task: spec.md + tb.v (+ spec_vhdl.md + tb.vhdl)
   results/  results.jsonl (append-only)
 embed/      model260k.h, tok512.h — the model compiled into the binary
 tools/      embed_model.py
-rtl/        the accelerator (LLM-generated, human-reviewed)
 web/        the demo page
-docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md
+docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md, HANDOFF.md
 ```
 
 **Read these first:**
@@ -185,12 +213,15 @@ get a working SoC, then unlimited fast iteration in software.
 Every Verilog module still simulates in `iverilog` before consuming a synthesis
 slot. Simulation is ~1 second and free.
 
-## Fallback, in order
+## Fallback, in order — resolved, kept for the record
 
-1. Soft core + `stories260K` generating tokens on fabric. ← the goal
+1. ✅ Soft core + `stories260K` generating tokens on fabric. ← the goal, and what happened.
 2. Soft core running any C, plus a hardware int8 MAC array verified on the
-   7-segment displays.
-3. The Verilog benchmark alone, with resource/synthesis data. Ships from a laptop.
+   7-segment displays. **Not needed as a fallback** — #1 succeeded — but being
+   built anyway, as a standalone bonus proof, disconnected from the model. See
+   the table near the top of this README.
+3. ✅ The Verilog benchmark alone, with resource/synthesis data. Ships from a
+   laptop regardless of hardware — also done.
 
 ## License
 

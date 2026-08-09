@@ -90,8 +90,11 @@ entire split below.
    Wilson (macOS, M4 Max)                     Justin (PC, Quartus)
    ───────────────────────                    ─────────────────────
    C code + embedded model  ──── git ────►    compiles for the soft core
-   Verilog from LLMs        ──── git ────►    programs + compiles for the board
-   benchmark harness                          board + JTAG
+   Verilog from LLMs        ──── git ────►    graded in simulation only
+   benchmark harness                          (not programmed onto the board —
+                                                the model's soft core carries
+                                                no LLM-written Verilog; see
+                                                README's ownership table)
    web app on Cloudflare    ◄── HTTPS ─────   bridge.py POSTs tokens outbound
 ```
 
@@ -111,7 +114,12 @@ sleeps or leaves.
 1. The prebuilt **DE10-Lite Computer** (Nios II/f + FPU + SDRAM controller + JTAG UART) programmed onto the MAX 10.
 2. `stories260K` compiled for that core, weights embedded in the binary.
 3. Tokens streaming out over JTAG and onto a public web page.
-4. A benchmark of LLM-written Verilog: lint → simulate → testbench → synthesize.
+4. A benchmark of LLM-written Verilog: lint → simulate → testbench → synthesize. **Simulation only** — nothing from the benchmark is synthesized onto the board as part of this scope.
+
+**Bonus, not required for either deliverable above:** one benchmark module
+(`mac_array8`) proven on real silicon — a separate, standalone bitstream driven
+by switches/LEDs, not touching the DE10-Lite Computer system or `matmul()`.
+In progress. If it does not land, nothing above is affected.
 
 ### Out of scope — decided, do not relitigate
 

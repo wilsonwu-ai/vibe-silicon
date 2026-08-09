@@ -243,17 +243,24 @@ one that ships the website.)
 
 ## 11. What are we actually measuring?
 
-One number, before and after:
+> **This section is stale — written for the DE10-Nano plan, before the pivot.**
+> That plan compared an ARM core against an FPGA accelerator. This board has no
+> ARM at all, and the accelerator was never wired into the running system (see
+> the README's "what's ours, what's Intel's, and what's LLM-written" table). The
+> real number below.
+
+One number:
 
 ```
-tokens per second
+seconds per token
 ```
 
-A token is roughly a word. Run the model on the ARM alone: write the number
-down. Turn on the FPGA accelerator: write the number down.
-
-**Those two numbers side by side are the entire presentation.** Everything else
-is supporting material.
+**1.020 s/token, measured** — the whole model, running on the Nios II soft core,
+timed with a stopwatch on the real board. Not before-and-after; there is nothing
+being turned on or off. The interesting comparison isn't against a baseline we
+built, it's against the 0.1–0.2 s/token we *predicted* before measuring — see
+[HARDWARE-RESULTS.md](HARDWARE-RESULTS.md) for why it's slower, and why that
+turned out to be the more interesting story.
 
 ---
 
@@ -386,12 +393,20 @@ slower than one person owning it.
 
 ## 18. If it all falls apart
 
-The fallback is real, not decorative. Even with zero FPGA acceleration working,
-we still walk on stage with:
+Also written for the old plan — updated with what's actually true now. Nothing
+here is theoretical any more; all three already happened:
 
-- a working transformer running on an FPGA dev board's ARM core
-- a measured benchmark of how well current LLMs write Verilog
-- a deployed public page showing both
+- ✅ a working transformer running on a Nios II soft core we programmed into
+  the FPGA — no ARM on this board, there never was one — measured at
+  1.020 s/token, byte-identical output
+- ✅ a measured benchmark of how well current LLMs write Verilog (simulation
+  only — see `bench/FINDINGS.md` before quoting the headline number)
+- ✅ a deployed public page showing both
+
+There's a fourth, genuinely optional thing in progress: proving one of the
+benchmark's accelerator modules on real silicon, standalone, disconnected from
+the model. If it lands, it's a bonus. If it doesn't, none of the three above
+are affected — they were done independently of it.
 
 That is a fine result. Say the accelerator did not land, show the data you do
 have, and do not pretend otherwise. Judges respect a clean negative far more than
