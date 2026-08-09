@@ -21,7 +21,7 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 
 ---
 
-## Status — updated 13:55, Sunday
+## Status — updated 14:40, Sunday
 
 | | item | state |
 |---|---|---|
@@ -50,6 +50,11 @@ Measured, and it corrects this document: **1.020 s/token**, not the 0.1–0.2
 predicted. The hardware FPU is confirmed active — the core simply has **no data
 cache**, so every weight read hits a 16-bit SDRAM uncached. Full numbers in
 [HARDWARE-RESULTS.md](HARDWARE-RESULTS.md).
+
+No kill criterion was ever triggered at any point today. The fallback — a custom
+RTL MAC array plus WASM in the browser — was never needed. This is against a repo
+that at 11:44 this morning was aimed at a DE10-Nano, a board nobody in the room
+had.
 
 ---
 

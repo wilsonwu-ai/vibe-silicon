@@ -241,6 +241,30 @@ verified path.
 Written up in [TERNARY.md](TERNARY.md), labelled as the thing we did **not** do,
 with credit to Eugene.
 
+## ~14:40 — Tokens on the board
+
+Justin reported tokens generating on the DE10-Lite.
+
+A 292,000-parameter transformer, running on a Nios II soft core, on a MAX 10
+FPGA that contains no processor of its own. No ARM, no operating system, no
+filesystem — the weights are compiled into the executable because there is
+nothing to read a file from.
+
+Five hours and twenty minutes before the deadline, against a repo that at 11:44
+this morning was aimed at a different board entirely.
+
+**No kill criterion was ever triggered.** The fallback — custom RTL MAC array
+plus WASM in the browser — was never needed. The sequence that got here:
+
+1. identify the real hardware from a photograph, and throw away the plan
+2. pick the model that fits the memory, not the one that sounds impressive
+3. **stop building an SoC** and program a prebuilt one instead
+4. generate the bare-metal port so the math stays provably unmodified
+5. ship the public page early, so the requirement was met regardless of the board
+
+Step 3 was the one that mattered. The highest-leverage decision of the day was
+deleting work, not adding it.
+
 ---
 
 ## 14:00 — The model runs on the FPGA, and the output is exact
