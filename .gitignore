@@ -1,0 +1,25 @@
+bench/build/
+*.bin
+*.pt
+sim
+*.vvp
+*.vcd
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+
+# Quartus
+db/
+incremental_db/
+output_files/
+simulation/
+*.qws
+*.rpt
+*.sof
+*.rbf
+*.jdi
+*.pin
+*.summary
+*.done
