@@ -118,109 +118,142 @@ Confirmed working: the on-board USB-Blaster enumerates over USB
 
 # Who does what
 
+> **Plan change, verified midday.** We are **not** building an SoC. Intel's FPGA
+> University Program ships a prebuilt **"DE10-Lite Computer"** bitstream (inside the
+> Intel FPGA Monitor Program) containing a **Nios II/f core with hardware floating
+> point**, an **SDRAM controller mapping all 64 MB at `0x00000000`**, and a **JTAG
+> UART at `0xFF201000`**. Programming it takes ~10 seconds. No Platform Designer, no
+> SDRAM timing closure, no synthesis — the three things that kill FPGA hackathon
+> projects are all removed from the critical path.
+
 ## Wilson — software, artifacts, and the ship
 
-Wilson cannot run Quartus and will not try. Everything below runs on a Mac and is
-handed to Justin through the repo.
+| # | Deliverable | Done when |
+|---|---|---|
+| W1 | **Embedded model artifacts** — `embed/model260k.h`, `embed/tok512.h` | ✅ done. Byte counts verified: 1,056,540 and 6,227 |
+| W2 | **Golden reference** — run `stories260K` on macOS at fixed seed, temp 0; save the exact output | saved. It is both the bit-exactness reference and the webapp's replay stream |
+| W3 | **`run_baremetal.c`** — delete `read_checkpoint`'s entire mmap/fopen/fread/fseek/ftell path, point `weights_ptr` at the linked blob, replace every malloc/calloc with static arrays (working set is 676,192 B), stub `time()` | byte-identical output to W2, compiled with clang on macOS |
+| W4 | **Two details that decide whether it looks alive** | (a) `setvbuf(stdout, NULL, _IONBF, 0)` or tokens arrive in one block at the end and the board looks dead for 30 s; (b) print with `fputs`/`putchar`, **never `%f`** — newlib's float printf is enormous |
+| W5 | **Precompute the RoPE `powf()` table** — loop-invariant across tokens, and one of the two software-float hot spots | measurable speedup, or dropped if the FPU flag works |
+| W6 | **Tarball for Justin** — `run_baremetal.c`, both `.bin` files, README with the exact `objcopy`/`gcc` lines, and the expected first 20 tokens | handed over by 14:45 |
+| W7 | **Public webapp** — Cloudflare Worker + Durable Object on `*.workers.dev`: `POST /ingest` (bearer token), SSE `GET /stream`, live tokens + tok/s counter | live by 15:30, verified from a phone **on cellular**, not venue wifi |
+| W8 | **`bridge.py`** — stdlib only, ~40 lines: spawn `nios2-terminal`, read stdout char by char, POST batched chars every 250 ms | sent to Justin by 16:15. Outbound HTTPS only — no inbound port, no tunnel |
+| W9 | **The exact stage claim, written verbatim** before 18:00 | see "What we say" below |
+| W10 | **Screen recording** of the live page streaming real tokens | exists by 19:00. This is what plays if anything dies at 20:00 |
+
+**W3 is the critical path.** Justin cannot compile anything until it exists.
+
+## Justin — toolchain and the board
 
 | # | Deliverable | Done when |
 |---|---|---|
-| W1 | **Embedded model artifacts** — `embed/model260k.h`, `embed/tok512.h` | ✅ done. 8-byte aligned, 1,056,540 + 6,227 byte payloads |
-| W2 | **`runi.c`** — llama2.c with every filesystem call removed, reading from the embedded arrays instead of `fopen`/`mmap` | compiles clean with `gcc` on macOS **and** produces byte-identical output to upstream `run.c` |
-| W3 | **Fixed-point fallback** — integer-only inference, in case software floating point is too slow on the core | generates coherent text on the Mac; only needed if W2 is slow on hardware |
-| W4 | **Verilog benchmark harness** | rows in `bench/results/results.jsonl` across ≥3 models × 3 tasks |
-| W5 | **Web app + Cloudflare tunnel** — public page showing the live token stream and tokens/sec | reachable from a phone on cellular, not just the venue wifi |
-| W6 | **Ingest endpoint** — `POST /tokens` for Justin's PC to push output to | returns 200 from Justin's machine over the venue LAN |
-| W7 | **The narrative** — what gets said at 20:00, in what order | rehearsed once, out loud, before 19:30 |
+| J1 | **Three answers, first 15 minutes, nothing else** | (a) Quartus version from *Help → About*, (b) does `jtagconfig` list the `10M50`, (c) does `nios2-elf-gcc --version` work |
+| J2 | **Quartus Prime Lite 18.1** if Nios II EDS is missing — *Individual Files* tab: base ~1.7 GB + `max10-18.1.0.625.qdz` ~331 MB, 14 GB disk. Skip ModelSim and every other device family | `nios2-elf-gcc --version` works |
+| J3 | **Prove the board is alive independently** — resolve the USB-Blaster driver (lives under `<quartus>/drivers`), program any prebuilt Terasic demo `.sof` | 7-seg or GSensor demo runs |
+| J4 | **Monitor Program** → new project → **DE10-Lite Computer** predesigned system → load a bundled sample C program → Compile → Load → Run | output appears in the terminal. **This is the 14:30 gate** |
+| J5 | **Linker regions in SDRAM** — `.text`, `.rodata`, `.data`, `.bss`, heap, stack at `0x00000000`, **not** the 64 KB on-chip RAM | 1.7 MB links. Getting this wrong hangs with **no error message** |
+| J6 | **Build and run Wilson's tarball** | first 20 tokens match the expected output |
+| J7 | **Measure seconds-per-token** and report it | Wilson has a real number by 16:30. Neither of you quotes the estimate |
+| J8 | **Run `bridge.py`** against `nios2-terminal` | tokens land on the public URL |
+| J9 | **Insurance** — `.sof` + `.elf` on a USB stick and a second laptop; phone video of the board generating tokens | both exist by 19:00 |
 
-**W2 is the critical path.** Justin cannot compile anything for the core until a
-filesystem-free C program exists.
+### Quartus version is the day's biggest risk
 
-## Justin — hardware, toolchain, and the board
-
-| # | Deliverable | Done when |
+| version | Nios II? | Windows toolchain |
 |---|---|---|
-| J1 | **Toolchain check** — `jtagconfig` sees the board; report the **Quartus version number** | version posted in Discord. If ≥ 24.1std, Nios II does not exist and NEORV32 is the only path |
-| J2 | **NEORV32 SoC** — core + SDRAM controller + JTAG UART, pinned for the DE10-Lite | "hello world" prints over JTAG UART |
-| J3 | **RISC-V GCC** installed, compiling for the core | W2's C file builds for the target |
-| J4 | **Model on the core** — link the embedded arrays, run inference | one token appears |
-| J5 | **Token forwarding** — read JTAG UART, POST to Wilson's endpoint | tokens appear on the public page |
-| J6 | *(stretch)* **int8 MAC array** replacing `matmul()` | tokens/sec measurably higher than J4 |
-| J7 | *(stretch)* **7-segment readout** — live token or MAC count | visible from the audience |
-
-**J2 is the critical path.** Everything hardware-side is blocked behind a working
-SoC.
-
-### The economics Justin should know
-
-Synthesis costs ~25 minutes. But **once the SoC is synthesized once, the C program
-reloads over JTAG in seconds with no re-synthesis.** So this is not a
-twelve-runs-a-day budget — it is one or two runs to get a working SoC, then
-unlimited fast iteration in software.
-
-Get the SoC right. Then live in C.
+| **18.1 Lite** | ✅ | ✅ self-contained — **use this** |
+| 19.1 – 23.1std | ✅ | ⚠️ **WSL1** (WSL2 explicitly unsupported) + Ubuntu 18.04 + manual Eclipse — 1–3 hour rabbit hole |
+| ≥ 24.1std | ❌ **removed** | Nios II IP no longer exists |
 
 ---
 
 ## Schedule
 
-| Time | Gate | Owner |
+| Time | What | Owner |
 |---|---|---|
-| 14:00 | `jtagconfig` sees board; Quartus version reported; W2 compiles on Mac | both |
-| 16:00 | **Hard gate.** Soft core prints "hello" over JTAG. If not → fall back | Justin |
-| 17:00 | Model emitting tokens on the core; web page live on a tunnel | both |
-| 18:00 | Tokens flowing board → PC → Mac → public URL, end to end | both |
-| 19:00 | **Freeze.** Deploy whatever exists. No new features. | Wilson |
-| 19:30 | Rehearse out loud, once | both |
-| 20:00 | Present | both |
+| 12:00–12:15 | Alignment. Justin answers J1's three questions. Lock the install decision. | both |
+| 12:15–12:45 | Start the Quartus 18.1 download (skip if Nios II EDS works) | Justin |
+| 12:15–13:00 | Golden reference output on macOS, fixed seed | Wilson |
+| 12:45–13:30 | USB-Blaster driver, `jtagconfig`, program a Terasic demo | Justin |
+| 13:00–14:15 | Write `run_baremetal.c`, verify byte-identical | Wilson |
+| 13:30–14:30 | Install Quartus 18.1 + Monitor Program 18.1 | Justin |
+| 14:15–14:45 | Package the tarball | Wilson |
+| 14:30–15:30 | Build Wilson's tarball for Nios II, download, run | Justin |
+| 14:45–15:30 | Deploy the Worker webapp to a public URL | Wilson |
+| 15:30–16:30 | Debug and **measure** s/token. Do not optimize past "it works" | Justin |
+| 15:30–16:15 | Write `bridge.py`, send to Justin | Wilson |
+| **16:30–17:00** | **KILL GATE.** Decide primary vs fallback out loud, one sentence each. Commit. No re-litigating after. | both |
+| 17:00–18:00 | Integration: bridge → public URL, watched from a different network | both |
+| **18:00** | **HARD FREEZE.** No new compiles, no new features. | both |
+| 18:00–19:00 | Slides + narrative / record insurance video | split |
+| 19:00–19:45 | Two full timed dry runs. Rehearse the 30-second and 3-minute versions | both |
+| 19:45–20:00 | Set up. Public URL open on a second device as proof | both |
 
 ## Kill criteria
 
-Written down now so they are not argued about at 18:00 under stress.
+1. **12:30** — if Quartus is ≥ 24.1 or there is no Nios II EDS, the 18.1 download must be **underway**.
+2. **13:45** — `jtagconfig` must list the `10M50`. Not resolved by 14:15 → the board is out; go software-only (WASM in the browser) and show the Verilog benchmark.
+3. **14:30** — a **stock** Monitor Program sample must be printing from the board. If not → **abandon the Nios II path**, Justin switches to the RTL MAC array, Wilson starts the emscripten WASM build.
+4. **15:30** — the public URL must be live and streaming the **replayed** token stream, verified from a phone on cellular. Sundai requires a deployed webapp; without it the project does not count.
+5. **16:30** — the board must have printed at least one real token. Something-but-not-tokens → keep debugging until 17:30, model **frozen** at `stories260K` fp32.
+6. **17:30** — tokens on the board but the bridge not delivering → stop fixing the bridge, switch the page to **replay mode**. A recorded real result on a live public page beats a broken live pipe.
+7. **18:00** — hard freeze, unconditional.
+8. **19:00** — a screen recording of the live page **and** a phone video of the board must both exist. If not, stop rehearsing and make them.
+9. **ANY TIME** — if anyone proposes `stories15M`, stop them. It is the seductive middle option: 60.8 MB fp32 leaves no room for code or stack in 64 MB, and its 15–58 MB JTAG load is **2.6–17 minutes per edit-compile-test iteration**.
 
-1. **16:00 — no "hello world" over JTAG** → abandon the soft-core path. Ship the
-   Verilog benchmark plus a hardware MAC array demo on the 7-segments.
-2. **17:30 — no tokens on hardware** → present the model running on the Mac beside
-   the synthesized core running *something*, and be honest about where the line is.
-3. **19:00 — anything not deployed** → cut it. A smaller true demo beats a larger
-   broken one.
+---
 
-## Acceptance criteria for the demo itself
+## What we say on stage
 
-- [ ] Reachable at a public https URL from a phone on cellular
-- [ ] A token appears on screen, live, from the board
-- [ ] Tokens/sec is displayed and honest
-- [ ] "Built at Sundai" and both team members credited on the page
-- [ ] The repo is public with a license
-- [ ] Nobody claims we ran a "real LLM on an FPGA" — we ran a 292K-parameter
-      transformer on a soft core, and that is the interesting true thing
+Write it down verbatim and do not improvise:
+
+> **"Karpathy's llama2.c — unmodified in its math — running bare metal on a Nios II
+> soft core we programmed onto a MAX 10 FPGA. No ARM, no operating system, no
+> filesystem. The processor didn't exist until we configured it into the fabric this
+> afternoon."**
+
+Precision matters here, and it is the difference between a good answer and a bad one
+in Q&A:
+
+- ✅ We **programmed** a soft core into fabric. It is genuinely soft — it exists only
+  because we configured it.
+- ❌ We did **not design** the CPU. The Nios II/f and its SDRAM controller are
+  Intel's, prebuilt. Say so. It costs nothing and buys total credibility.
+- ❌ Never say "we ran an LLM on an FPGA." We ran a **292K-parameter transformer** on
+  a soft core. That is the interesting true thing.
+
+## The honesty slide
+
+Genuinely the best slide in the deck:
+
+- The 10M50's 144 embedded 18×18 multipliers (288 in 9×9 int8 mode) could retire
+  **~28.8 G int8 MAC/s at 100 MHz**
+- The single 16-bit SDRAM caps what you can actually stream into them
+- We used **almost none** of that — the Nios II does the math serially
+- 205 KB of on-chip RAM cannot hold a 1 MB model, so it lives in the 64 MB SDRAM
+
+Showing the gap between what the silicon *could* do and what we *did* is a stronger
+move than pretending there is no gap.
+
+## Acceptance criteria
+
+- [ ] Reachable at a public https URL from a phone on **cellular**
+- [ ] A token appears live, from the board
+- [ ] Seconds-per-token displayed, **measured not estimated**
+- [ ] "Built at Sundai" and both members credited on the page
+- [ ] Repo public with a license
+- [ ] Nobody claims a "real LLM on an FPGA"
 
 ## Risks
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| SDRAM controller timing won't close | medium | It's the #1 failure on this board. Use Terasic's reference config verbatim; don't hand-tune. |
-| Software floating point too slow | medium | W3 fixed-point port, already scoped |
-| Quartus ≥ 24.1 kills Nios II | medium | NEORV32 is the plan anyway; it's license-free and version-agnostic |
-| Synthesis eats the afternoon | medium | One SoC build, then iterate in C over JTAG |
-| Venue wifi blocks the LAN POST | low | Fall back to Justin screen-sharing the JTAG terminal into the page |
-| **Theme fit** — no foundation model *sensing the physical world* | **high** | See below |
-
-### The theme-fit risk, stated plainly
-
-The hack's stated pattern is **Sensor → Foundation Model → Decision → Physical
-Action**. As scoped, this project has a language model but no *sensor* and no
-*physical action*.
-
-Cheapest fix, if there's time after 17:00: the board has an on-board **ADXL345
-accelerometer**. Read it from the soft core, and let motion seed or steer
-generation — tap the board, the story changes. That closes the loop with maybe
-thirty lines of C and no extra hardware.
-
-Low priority against shipping, but it is the difference between "on theme" and
-"impressive but adjacent."
-
----
+| **No `nios2-elf-gcc`** — Quartus ≥ 24.1, or the WSL1 rabbit hole on 19.1–23.1 | **high** | Install 18.1 Lite. Decide by 12:30. This is the #1 schedule risk. |
+| Linker regions default to on-chip RAM | high | J5. Failure mode is a **silent hang** — check it first when nothing prints |
+| `-mcustom-fpu-cfg=60-2` errors | medium | Drop the flag. Soft float still works, ~10–20× slower. Performance risk, not viability |
+| Quoting an unmeasured tok/s on stage | medium | J7. Say "roughly a second per token, here it is" until measured |
+| Venue wifi blocks the POST | low | Outbound HTTPS only, no inbound port. Falls back to replay mode |
+| **Theme fit** — no sensor, no physical action | **high** | ADXL345 on board; ~30 lines of C to let motion steer generation. Only after 17:00 |
 
 ## Definition of done
 
