@@ -40,6 +40,7 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 | J7 | measure s/token | ✅ **done — 1.020 s/token, 0.98 tok/s** (measured, not estimated) |
 | J8 | **bridge → public page** | ✅ **DONE and verified end to end** — see [E2E-VERIFIED.md](E2E-VERIFIED.md) |
 | J9 | insurance: .sof/.elf on a second machine | 🔄 in progress |
+| W10 | screen + phone recording | 🔄 captured 19:00, needs playback check |
 
 **The primary path is done.** The model generates all 256 tokens on the FPGA and
 the output is byte-identical to the macOS reference — there is no float

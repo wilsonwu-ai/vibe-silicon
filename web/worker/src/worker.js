@@ -253,6 +253,19 @@ body.present #cursor{ width:.55em; height:1.05em }
 .sysline{ display:block; font-family:var(--mono); color:var(--dim);
   font-size:.52em; line-height:1.5; opacity:.75 }
 .sysline.first{ margin-top:0 }
+.specs{margin:22px 0 0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.specs h3{margin:0;padding:12px 18px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--dim);font-weight:700;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+.specs table{width:100%;border-collapse:collapse;font-size:14px}
+.specs td{padding:9px 18px;border-bottom:1px solid rgba(255,255,255,.045);vertical-align:top}
+.specs tr:last-child td{border-bottom:0}
+.specs td:first-child{color:var(--dim);white-space:nowrap;width:1%;padding-right:26px}
+.specs td:last-child{font-family:var(--mono);color:var(--fg)}
+.specs .none td{background:rgba(255,85,102,.06)}
+.specs .none td:last-child{color:#ff8b98}
+body.present .specs{margin-top:14px}
+body.present .specs table{font-size:clamp(13px,1.02vw,18px)}
+body.present .specs td{padding:7px 18px}
 #presentHint{
   position:fixed; right:14px; bottom:12px; font-size:12px; color:var(--dim);
   font-family:var(--mono); opacity:.55; pointer-events:none;
@@ -271,6 +284,19 @@ The processor did not exist until we configured it into the fabric this afternoo
 </div>
 
 <div id="out"><span id="text"></span><span id="cursor"></span></div>
+
+<div class="specs">
+  <h3>What the board actually is</h3>
+  <table>
+    <tr><td>FPGA</td><td>Intel MAX 10 &nbsp;10M50DAF484C7G</td></tr>
+    <tr><td>Logic</td><td>50,000 logic elements</td></tr>
+    <tr><td>On-chip RAM</td><td>1,638 Kbit M9K &asymp; 205 KB</td></tr>
+    <tr><td>Multipliers</td><td>144 &times; 18&times;18</td></tr>
+    <tr><td>External RAM</td><td>64 MB SDRAM &middot; 16-bit</td></tr>
+    <tr><td>Human I/O</td><td>10 switches &middot; 10 LEDs &middot; six 7-segment &middot; VGA &middot; 40-pin GPIO &middot; ADXL345</td></tr>
+    <tr class="none"><td>Does not have</td><td>no ARM &middot; no Linux &middot; no filesystem</td></tr>
+  </table>
+</div>
 
 <div class="grid">
   <div class="card"><div class="k">characters</div><div class="v" id="mChars">0</div></div>
@@ -318,6 +344,14 @@ function tick(){
 setInterval(tick, 200);
 
 var rawBuf = '';
+// Follow the output only while the reader is already at the bottom. Forcing a
+// scroll on every token makes it impossible to read anything above the fold --
+// you scroll up, the next token yanks you back down.
+var stick = true;
+function nearBottom(){
+  return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 140);
+}
+window.addEventListener('scroll', function(){ stick = nearBottom(); }, {passive:true});
 function esc(x){ return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // Split nios2-terminal's own chatter from the model's output. The banner stays
 // on screen as proof of hardware -- it names a physical USB-Blaster, which a
@@ -349,7 +383,7 @@ function append(t){
   chars += t.length;
   rawBuf += t;
   render();
-  window.scrollTo(0, document.body.scrollHeight);
+  if (stick) window.scrollTo(0, document.body.scrollHeight);
 }
 function goLive(){
   if(live) return;
