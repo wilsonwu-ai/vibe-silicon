@@ -132,10 +132,33 @@ actually win before 8pm.
 
 **Install Quartus Prime Lite 18.1** from the *Individual Files* tab: base installer
 (~1.7 GB) plus `max10-18.1.0.625.qdz` (~331 MB). Skip ModelSim and every other
-device family. Then the **Intel FPGA Monitor Program 18.1** from
+device family. ~14 GB free disk. Then the **Intel FPGA Monitor Program 18.1** from
 [fpgacademy.org/tools.html](https://fpgacademy.org/tools.html).
 
 Skip all of it if `nios2-elf-gcc --version` already works.
+
+### Plain Windows, or WSL? — **plain Windows.**
+
+Native installer. No WSL, no Linux, no VM. This is the whole reason 18.1 is the pick.
+
+Intel removed the bundled Cygwin from Nios II EDS and replaced it with WSL starting
+at **Standard Edition 19.1** (Pro 19.2). **18.1 still ships Cygwin**, so its
+`Nios II Command Shell` works natively out of the installer. Newer versions also
+require **WSL 1 specifically — Nios II does not support WSL 2** — which means
+installing a deprecated subsystem plus Ubuntu 18.04 before you can compile anything.
+
+Two things that save an hour:
+
+- **Confirm the Nios II EDS component is ticked during install.** A minimal or
+  custom install can silently drop it, and you get everything right and still have
+  no compiler.
+- **You do not need to uninstall a newer Quartus.** Versions coexist — 18.1 lands in
+  `C:\intelFPGA_lite\18.1` and leaves an existing install alone.
+
+Verify: Start Menu → **Nios II Command Shell** → `nios2-elf-gcc --version`.
+
+Sources: [Intel: WSL 1 requirements for Nios II EDS](https://www.intel.com/content/www/us/en/docs/programmable/683525/21-3/windows-subsystem-for-linux-wsl-on-windows.html) ·
+[Intel: why Nios II Command Shell fails to launch](https://www.intel.com/content/www/us/en/support/programmable/articles/000086881.html)
 
 ### Three questions before anything else
 
