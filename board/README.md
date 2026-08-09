@@ -5,6 +5,10 @@
 > and the die is marked **`10M50DAF484C7G`**. Everything in this file was rewritten
 > for that hardware. The previous version assumed an ARM core that does not exist.
 
+Official reference: [`docs/DE10-Lite_User_Manual.pdf`](../docs/DE10-Lite_User_Manual.pdf)
+(Terasic, 74 pages — board layout, connectors, full pin assignment tables, System
+Builder tool). Provenance in [`docs/DE10-Lite_User_Manual.md`](../docs/DE10-Lite_User_Manual.md).
+
 ## What this board actually is
 
 | | |
