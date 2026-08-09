@@ -170,7 +170,8 @@ docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md, HANDOFF.md
 |---|---|
 | **[docs/HARDWARE-RESULTS.md](docs/HARDWARE-RESULTS.md)** | **what the board actually did, measured — speed, profile, and why it is 1 s/token** |
 | **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | **every term and acronym, for readers new to hardware — start here** |
-| **[docs/TALK.md](docs/TALK.md)** | **what to say at 8pm — 30-second and 3-minute versions, with the numbers** |
+| **[docs/QA-TALK.md](docs/QA-TALK.md)** | **the talk as questions — the version actually delivered** |
+| [docs/TALK.md](docs/TALK.md) | the same talk as prose, 30-second and 3-minute versions |
 | [docs/E2E-VERIFIED.md](docs/E2E-VERIFIED.md) | proof the public page is fed by real silicon, not a simulator |
 | [docs/LOG.md](docs/LOG.md) | play-by-play of the day, including the wrong turns |
 | [bench/FINDINGS.md](bench/FINDINGS.md) | benchmark results — and why the headline number should not be quoted |
