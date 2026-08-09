@@ -4,6 +4,15 @@ bench/build/
 sim
 *.vvp
 *.vcd
+
+# ghdl analysis / elaboration artifacts, and locally-built bench sims
+*.cf
+*.o
+e~*
+bench/tasks/*/tb
+bench/tasks/*/simref
+bench/tasks/*/simbad
+
 __pycache__/
 *.pyc
 .venv/

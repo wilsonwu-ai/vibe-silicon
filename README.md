@@ -114,13 +114,15 @@ embed/      model260k.h, tok512.h — the model compiled into the binary
 tools/      embed_model.py
 rtl/        the accelerator (LLM-generated, human-reviewed)
 web/        the demo page
-docs/       ELI5.md — all of this in plain English
+docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md
 ```
 
 **Read these first:**
 
 | doc | what it answers |
 |---|---|
+| **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | **every term and acronym, for readers new to hardware — start here** |
+| [docs/LOG.md](docs/LOG.md) | play-by-play of the day, including the wrong turns |
 | [docs/PRD.md](docs/PRD.md) | who does what, schedule, kill criteria, acceptance |
 | [docs/WHY-KARPATHY.md](docs/WHY-KARPATHY.md) | why Karpathy's model and not the two `tiny-gpu` repos |
 | [docs/ELI5.md](docs/ELI5.md) | all of it in plain English, from "what is an FPGA" |

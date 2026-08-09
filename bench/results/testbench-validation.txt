@@ -1,0 +1,44 @@
+TESTBENCH VALIDATION -- run 2026-08-09, before any model was benchmarked
+=======================================================================
+
+Why this file exists: a testbench that passes everything measures nothing. Before
+trusting any pass rate, every testbench was run against a known-correct
+implementation (must pass) and a deliberately broken one (must fail). If a
+testbench cannot tell those apart, every number downstream of it is noise.
+
+The broken implementations encode real LLM failure modes, not syntax errors --
+each one COMPILES and ELABORATES cleanly and fails only on behaviour.
+
+  int8_mac      reset priority inverted (checks `en` before `rst`)
+  dot4_int8     signed inputs interpreted as unsigned
+  mac_array8    blocking assignment in a clocked process
+
+RESULT
+------
+  task          lang      impl   outcome    expected   ok
+  int8_mac      verilog   ref    PASSED     PASSED     yes
+  int8_mac      verilog   bad    failed     failed     yes
+  int8_mac      vhdl      ref    PASSED     PASSED     yes
+  int8_mac      vhdl      bad    failed     failed     yes
+  dot4_int8     verilog   ref    PASSED     PASSED     yes
+  dot4_int8     verilog   bad    failed     failed     yes
+  dot4_int8     vhdl      ref    PASSED     PASSED     yes
+  dot4_int8     vhdl      bad    failed     failed     yes
+  mac_array8    verilog   ref    PASSED     PASSED     yes
+  mac_array8    verilog   bad    failed     failed     yes
+  mac_array8    vhdl      ref    PASSED     PASSED     yes
+  mac_array8    vhdl      bad    failed     failed     yes
+
+  12 / 12 checks correct.
+
+Both languages discriminate identically, which is the precondition for comparing
+their pass rates at all. If Verilog's testbenches were stricter than VHDL's, the
+comparison would report a language difference that was really a testbench
+difference.
+
+Reproduce:
+  cd bench/tasks/<task>
+  iverilog -g2001 -o s ref.v tb.v && vvp s          # expect ALL TESTS PASSED
+  iverilog -g2001 -o s bad.v tb.v && vvp s          # expect failures
+  ghdl -a --std=08 ref.vhdl && ghdl -a --std=08 tb.vhdl && ghdl -e --std=08 tb && ghdl -r --std=08 tb
+  ghdl -a --std=08 bad.vhdl && ghdl -e --std=08 tb && ghdl -r --std=08 tb
