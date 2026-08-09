@@ -50,6 +50,34 @@ Needs only the Python standard library. Nothing to pip install.
 STEP 3  (after Quartus 18.1 + Intel FPGA Monitor Program 18.1 are installed)
 -------------------------------------------------------------------------------
 
+WHY THE MONITOR PROGRAM AT ALL, IF JTAG SERIAL ALREADY WORKS
+
+It is not an IDE you have to adopt. Everything is drivable from the command
+line, and you have already proven those tools work.
+
+What you need from it is ONE artifact: a prebuilt CPU. This board has no
+processor, so something has to put a Nios II core + SDRAM controller + JTAG
+UART into the fabric. Building that yourself in Platform Designer is hours of
+Qsys and SDRAM timing closure. The Monitor Program ships it ready-made as the
+"DE10-Lite Computer".
+
+Open it once to get that onto the board and to get the linker settings. Then
+ignore the GUI and work from the shell.
+
+Get **18.1**, not 21.1 -- FPGA Academy's own instruction is to match your
+Quartus version.
+
+ALTERNATIVE, if the Monitor Program fights you: the Terasic DE10-Lite System CD
+ships "SDRAM Test in Nios II", which is also a real Nios II + SDRAM + JTAG UART
+design for this board. It works, but it is a memory test and probably has no
+hardware FPU -- and our model is floating point throughout, so that is the
+difference between ~0.1 s and ~3 s per word.
+
+WORTH RUNNING EITHER WAY: the Terasic SDRAM test proves the 64 MB physically
+works before we put a 1.8 MB program into it. If ours later hangs, that tells
+you whether to suspect the memory or the linker regions.
+
+
 Confirm the toolchain exists:
 
     nios2-elf-gcc --version

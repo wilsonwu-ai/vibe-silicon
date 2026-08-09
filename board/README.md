@@ -124,6 +124,57 @@ That means the FPGA half of this project is not "build a computer", it is
 "**program a known-good computer and compile C for it**". Which is a fight we can
 actually win before 8pm.
 
+### What the Monitor Program is actually for
+
+It is **not** an IDE you have to adopt. Everything here is drivable from a plain
+Windows command line, and if `nios2-terminal` already talks to the board then
+those tools are working:
+
+```
+quartus_pgm      load a bitstream onto the FPGA
+nios2-elf-gcc    compile          (no board needed)
+nios2-download   push the ELF over JTAG
+nios2-terminal   read what it prints
+```
+
+The Monitor Program is a **delivery vehicle for one artifact: a prebuilt CPU.**
+The board has no processor, so something has to put a Nios II core, an SDRAM
+controller and a JTAG UART into the fabric. Three ways to get that:
+
+| path | cost |
+|---|---|
+| Build it yourself in Platform Designer | hours — Qsys, SDRAM timing closure, synthesis |
+| **Monitor Program → "DE10-Lite Computer"** | **a download; prebuilt and pre-verified** |
+| Terasic System CD → "SDRAM Test in Nios II" | already on the CD, but see below |
+
+Open it once to get the `.sof` onto the board and to get the linker settings.
+After that, ignore the GUI and live in the shell.
+
+**Get the version that matches Quartus.** FPGA Academy offers Monitor Program
+18.1 and 21.1; their own instruction is to match your Quartus version. We are on
+18.1, so **18.1**.
+
+### The alternative, and why we still want the Monitor Program
+
+Terasic's DE10-Lite System CD ships **"SDRAM Test in Nios II"** — a real Nios II
++ SDRAM controller + JTAG UART design for this exact board. It writes patterns
+across all 64 MB, reads them back, and prints progress to `nios2-terminal`. So it
+is a genuine second route to a working soft core with no extra download.
+
+| | prebuilt CPU | BSP / memory map | hardware FPU |
+|---|---|---|---|
+| Monitor Program "DE10-Lite Computer" | ✅ | ✅ ready-made | ✅ **Nios II/f with FPU** |
+| Terasic "SDRAM Test in Nios II" | ✅ | generate from its `.sopcinfo` | ❌ likely none — it is a memory test |
+
+**Take the Monitor Program, for the FPU.** Our model is floating point
+throughout. With hardware float we expect ~0.1–0.2 s per word; on software float
+0.7–3.0 s. Same demo; one of them holds a room and the other does not.
+
+**But run the Terasic SDRAM test anyway.** It proves the 64 MB physically works
+*before* we put a 1.8 MB program into it. If our program later hangs, that result
+tells you whether to suspect the memory or the linker regions — and ruling out
+hardware early is worth five minutes.
+
 ### Get the toolchain right in minute one
 
 **This is the highest-risk item of the entire day**, and it is a download decision:
