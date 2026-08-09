@@ -124,6 +124,7 @@ docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md
 | **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | **every term and acronym, for readers new to hardware — start here** |
 | [docs/LOG.md](docs/LOG.md) | play-by-play of the day, including the wrong turns |
 | [bench/FINDINGS.md](bench/FINDINGS.md) | benchmark results — and why the headline number should not be quoted |
+| [docs/TERNARY.md](docs/TERNARY.md) | Eugene's suggestion: make the multiplier disappear. The best idea we did **not** ship |
 | [docs/PRD.md](docs/PRD.md) | who does what, schedule, kill criteria, acceptance |
 | [docs/WHY-KARPATHY.md](docs/WHY-KARPATHY.md) | why Karpathy's model and not the two `tiny-gpu` repos |
 | [docs/ELI5.md](docs/ELI5.md) | all of it in plain English, from "what is an FPGA" |

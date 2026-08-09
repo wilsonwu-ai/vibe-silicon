@@ -210,6 +210,28 @@ for comparing their pass rates at all.
 
 A testbench that passes everything measures nothing.
 
+## ~14:05 — The best idea of the day, and we could not use it
+
+Eugene suggested ternary quantization. It arrived via voice transcription and
+came out as *"quantize them turner rate -1 1 and 0 and multiple it by x or gate,
+reverse gate and let it through."*
+
+"turner rate" is **ternary**. He was describing BitNet b1.58: constrain every
+weight to −1, 0 or +1, and multiplication stops existing — +1 is a wire, −1 is a
+sign flip, 0 is an off-switch.
+
+That targets our exact bottleneck. This chip has **144 multipliers and 50,000
+logic elements**; ternary needs *zero* multipliers, so it converts our scarcest
+resource into our most abundant one.
+
+We did not do it, and the reason is honest: ternary models are trained that way
+from scratch. Converting `stories260K` means quantization-aware retraining and
+re-validation — a research afternoon, not a hackathon hour, and we already had a
+verified path.
+
+Written up in [TERNARY.md](TERNARY.md), labelled as the thing we did **not** do,
+with credit to Eugene.
+
 ---
 
 ## Running themes
