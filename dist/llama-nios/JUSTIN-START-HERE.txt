@@ -1,8 +1,30 @@
 JUSTIN - START HERE
 ===================
 
-Everything you need is in this folder. Run the commands in order. Anything you
-can do before Quartus 18.1 finishes installing is marked NOW.
+Everything you need is in this folder -- no downloads, no .bin files, nothing to
+pip install. Run the steps in order. Anything you can do before Quartus 18.1
+finishes installing is marked NOW.
+
+If you are reading this from a git clone, you already have everything:
+
+    git clone https://github.com/wilsonwu-ai/vibe-silicon
+    cd vibe-silicon/dist/llama-nios
+
+Files here:
+
+    run_baremetal.c      the program
+    model260k.h          the weights, as a C array (5.5 MB of text, 1,056,540
+                         bytes of model). There is no filesystem on the board,
+                         so the model is compiled into the executable.
+    tok512.h             the tokenizer, same deal
+    expected_output.txt  exactly what it should print, seed 42
+    bridge.py            forwards board output to the public page
+    README.txt           the same build info, without the hand-holding
+
+Still installing? Quartus Prime Lite 18.1 + Intel FPGA Monitor Program 18.1,
+NOT 24.1 or newer -- Nios II was removed. Download links, the exact .qdz you
+need, and the "tick the Nios II EDS component" warning are in board/README.md
+in the repo. 18.1 coexists with your 25.1; you do not have to uninstall.
 
 
 -------------------------------------------------------------------------------
@@ -16,14 +38,20 @@ in every Quartus version.
 
 You want to see a USB-Blaster with a 10M50 device.
 
-  - Nothing listed?  It is the driver. It lives under <quartus>\drivers -- point
-    Device Manager at that folder for the unrecognised USB device.
-  - Still nothing?   Different cable, different USB port. The board is confirmed
-    working (it arrived running the factory 7-segment demo).
+  - "not recognised"?  jtagconfig is not on PATH. Run it from the Quartus
+    command prompt, or call it by full path out of <quartus>\quartus\bin64.
+  - Nothing listed?    It is the driver. It lives under <quartus>\drivers --
+                       point Device Manager at that folder for the unrecognised
+                       USB device.
+  - Still nothing?     Different cable, different USB port. The board is
+                       confirmed working (it arrived running the factory
+                       7-segment demo).
 
-Then open Programmer in 25.1 and load any prebuilt .sof from the DE10-Lite
-System CD. If the LEDs or 7-segments change, board + cable + driver are all good
-and you can stop worrying about hardware for the rest of the day.
+If you also want to prove the Programmer path end to end, load any .sof onto
+the board and watch the LEDs change. Any .sof will do -- the DE10-Lite System CD
+from terasic.com has several, or just wait for Step 3, where the Monitor Program
+supplies one. Do not burn time hunting for the CD; jtagconfig seeing the 10M50
+is the answer that actually matters.
 
 Do this while 18.1 installs. Finding a driver problem now instead of at 3pm is
 worth an hour.
@@ -43,7 +71,15 @@ appearing. The page will label it "streaming - recorded run", because it is.
 If that works, the whole network path from your PC to the public demo is proven
 before the board is even in the picture.
 
-Needs only the Python standard library. Nothing to pip install.
+Needs only the Python standard library. Nothing to pip install. If "python"
+opens the Microsoft Store, use "py" instead.
+
+WHEN IT WORKS, CLEAR IT:
+
+    python bridge.py --token <TOKEN> --reset
+
+Otherwise that recorded text sits in the page's buffer, and anyone loading the
+page later sees a recording that we would rather not have to explain.
 
 
 -------------------------------------------------------------------------------
@@ -78,7 +114,7 @@ works before we put a 1.8 MB program into it. If ours later hangs, that tells
 you whether to suspect the memory or the linker regions.
 
 
-Confirm the toolchain exists:
+Confirm the toolchain exists -- Start Menu > Nios II Command Shell, then:
 
     nios2-elf-gcc --version
 
@@ -93,12 +129,21 @@ Do the stock sample FIRST, before ours. If it prints to the terminal window, the
 prebuilt bitstream, the JTAG UART and the compiler are all working, and anything
 that breaks after this point is our code, not the setup.
 
+While you are here, WRITE DOWN THE PATH to the DE10-Lite Computer's .sof. The
+Monitor Program installs it under its Computer_Systems folder and programs it
+for you when it loads a project. You need it by hand in Step 5, and you need it
+again after every power cycle -- MAX 10 reloads its factory image from on-chip
+flash when it loses power, and the Nios II core simply is not there any more.
+
+    .sof path: ______________________________________________
+
 >>> THE ONE SETTING THAT SILENTLY EATS AN HOUR <<<
 
 In the BSP / Monitor Program linker settings, put .text .rodata .data .bss heap
 and stack in SDRAM (0x00000000, 64 MB). NOT the 64 KB on-chip RAM.
 
-Our program needs about 1.8 MB. It does not fit on-chip, and the failure mode is
+Our program needs about 1.8 MB, and the model is const, so it lands in .rodata
+-- that section alone is 1 MB. It does not fit on-chip, and the failure mode is
 a HANG WITH NO ERROR MESSAGE. If nothing prints later, check this first.
 
 
@@ -106,29 +151,58 @@ a HANG WITH NO ERROR MESSAGE. If nothing prints later, check this first.
 STEP 4  (build ours)
 -------------------------------------------------------------------------------
 
-Open a Nios II Command Shell and cd INTO THIS FOLDER. Then:
+Same Monitor Program project flow as the sample you just ran. That is on purpose:
+the Monitor Program owns the BSP, the linker script and the stdio-to-JTAG-UART
+wiring, and none of that comes for free from a bare gcc command line.
 
-    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 stories260K.bin model.o
-    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 tok512.bin     tok.o
-    nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c model.o tok.o -o llama.elf -lm
+    File > New Project
+      > "DE10-Lite Computer" again
+      > program type: C Program
+      > source file: run_baremetal.c   (from THIS folder)
+      > linker settings: everything in SDRAM, as in Step 3
+      > Compile
 
-  *** cd INTO THIS FOLDER FIRST. ***
-  objcopy builds the symbol name out of the PATH you hand it. If you pass
-  "downloads\llama-nios\stories260K.bin" the symbol becomes
-  _binary_downloads_llama_nios_stories260K_bin_start and it will not link.
-  A bare filename gives _binary_stories260K_bin_start, which is what the C
-  file expects.
+model260k.h and tok512.h must sit in the same folder as run_baremetal.c. They
+already do -- just do not move the .c file out on its own.
+
+Compiling takes a minute or two and looks stuck. It is not stuck: model260k.h is
+5.5 MB of hex and gcc is chewing through it. Let it finish.
+
+If you would rather drive it from the Nios II Command Shell, the compile itself
+is one line, run from inside this folder:
+
+    nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c -o llama.elf -lm
+
+  ... but that ELF has no system linker script, so it will not boot on the
+  board. Use it only to check that the code compiles. To produce a runnable ELF
+  on the command line you need the BSP's linker script and crt0 from a generated
+  BSP, which is exactly what the Monitor Program is doing for you above.
 
   If -mcustom-fpu-cfg=60-2 errors, DROP IT. Soft float still works, just
   slower. That is a speed problem, not a correctness problem.
+
+No objcopy, no .bin files, no symbol-name games. If you have seen an older
+version of these instructions that had you run nios2-elf-objcopy on
+stories260K.bin, ignore it -- see APPENDIX at the bottom for why.
 
 
 -------------------------------------------------------------------------------
 STEP 5  (run it)
 -------------------------------------------------------------------------------
 
+Monitor Program: Load, then Run. It programs the .sof and downloads the ELF for
+you, and its own terminal window shows the output.
+
+By hand, from the Nios II Command Shell:
+
+    quartus_pgm -m jtag -o "p;<path to DE10-Lite_Computer.sof>"
     nios2-download -c "USB-Blaster [USB-0]" -g llama.elf
     nios2-terminal
+
+ONLY ONE PROGRAM CAN OWN THE USB-BLASTER AT A TIME. Close the Quartus Programmer
+from Step 1, close any Monitor Program session, and close any other
+nios2-terminal before running these. A busy cable produces confusing errors that
+look like board failures and are not.
 
 The ELF is about 1.1 MB, so expect 9-70 seconds to load over JTAG. Then words
 start appearing one at a time.
@@ -145,7 +219,10 @@ is deterministic -- you should get exactly those words.
   - Right words      -> it works. Time 256 tokens with a stopwatch and send
                         Wilson the seconds-per-token. We want a measured number
                         on the slide, not an estimate.
-  - Different words  -> model loaded, float math is off. Tell Wilson.
+  - Different words  -> tell Wilson, and say whether you built the Step 4 way or
+                        the appendix way. Wrong-but-readable output is the
+                        signature of a misaligned model blob, which only the
+                        objcopy route can produce.
   - Garbage/nothing  -> linker regions. See Step 3.
 
 
@@ -153,11 +230,26 @@ is deterministic -- you should get exactly those words.
 STEP 6  (put it on the public page)
 -------------------------------------------------------------------------------
 
+ORDER MATTERS. The program prints its story once and exits. If the board has
+already finished, the bridge attaches to a board with nothing left to say and
+the page stays empty.
+
+First shell -- start the bridge and leave it running:
+
     python bridge.py --token <TOKEN> --reset
 
-This spawns nios2-terminal itself, forwards everything it prints to the public
-page, and mirrors it in your console so you can watch too. The page label
-switches to "live from the board".
+It spawns nios2-terminal itself, so make sure the one from Step 5 is closed.
+It mirrors everything in your console so you can watch too.
+
+Second shell -- now re-run the program:
+
+    nios2-download -c "USB-Blaster [USB-0]" -g llama.elf
+
+Words appear in the bridge's console and on the page at the same time, and the
+page label switches to "live from the board".
+
+To do it again for the actual demo, just re-run the nios2-download line. Leave
+the bridge up. Add --reset only when you want the page cleared first.
 
 If nios2-terminal needs arguments on your machine:
 
@@ -173,10 +265,42 @@ neural-network function is byte-for-byte upstream -- only file I/O and memory
 allocation changed, because the board has no filesystem and no heap.
 
 Verified on macOS before you got it: identical output to upstream run.c.
-md5 = 8e6e99ed83fc476e1a33bc0940ecffa1
+The md5 of that OUTPUT is 8e6e99ed83fc476e1a33bc0940ecffa1, and
+expected_output.txt is that text.
 
 Model is stories260K: 292K parameters, 1,056,540 bytes, 259,328 multiply-adds
 per token. It uses 2.6% of the board's 64 MB SDRAM including working space.
 
 Repo: https://github.com/wilsonwu-ai/vibe-silicon
 Page: https://vibe-silicon.wilson-af8.workers.dev
+
+
+-------------------------------------------------------------------------------
+APPENDIX - the old objcopy route, and why we stopped using it
+-------------------------------------------------------------------------------
+
+You can still link the raw .bin files instead of the headers:
+
+    python ..\..\tools\embed_model.py        # downloads both .bin into models\
+    copy ..\..\models\*.bin .
+    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 stories260K.bin model.o
+    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 tok512.bin     tok.o
+    nios2-elf-gcc -O2 -DBLOBS_FROM_OBJCOPY -mcustom-fpu-cfg=60-2 \
+        run_baremetal.c model.o tok.o -o llama.elf -lm
+
+Two traps, both avoided entirely by Step 4:
+
+  1. objcopy builds the symbol name out of the PATH you hand it. Pass
+     "models\stories260K.bin" and the symbol becomes
+     _binary_models_stories260K_bin_start, which will not link. It must be a
+     bare filename, from inside the folder.
+
+  2. objcopy makes no alignment promise, and the code casts the model blob to
+     float*. Nios II masks the low bits of an unaligned word load rather than
+     trapping, so a misaligned blob produces a wrong story instead of a crash --
+     the hardest failure of the day to diagnose. The .h arrays are declared
+     __attribute__((aligned(8))), so this cannot happen on the Step 4 path.
+     (--set-section-alignment would fix it, but it needs binutils 2.31+ and
+     18.1's Nios II binutils is older.)
+
+Use this only if the headers are somehow unavailable.

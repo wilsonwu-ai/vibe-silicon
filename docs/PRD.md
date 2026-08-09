@@ -77,8 +77,13 @@ entire split below.
    C code + embedded model  ──── git ────►    compiles for the soft core
    Verilog from LLMs        ──── git ────►    programs + compiles for the board
    benchmark harness                          board + JTAG
-   web app + tunnel         ◄─── LAN ─────    token stream out of the board
+   web app on Cloudflare    ◄── HTTPS ─────   bridge.py POSTs tokens outbound
 ```
+
+The token path does **not** cross the venue LAN and does not touch Wilson's
+laptop: `bridge.py` POSTs straight to the Worker. No inbound port, no tunnel,
+nothing for conference wifi to block, and the page stays up if Wilson's laptop
+sleeps or leaves.
 
 **The interface between them is this git repo plus one HTTP POST.** Nothing else.
 
@@ -97,7 +102,7 @@ entire split below.
 
 | Not doing | Why |
 |---|---|
-| `stories15M` | 97 MB fp32 vs 64 MB SDRAM. Does not fit. |
+| `stories15M` | 15.2 M params, **58.0 MiB** fp32 — 90.6% of the 64 MiB SDRAM on its own, before code, stack, or a 3.5 MB KV cache. It technically fits and is still unusable. See kill criterion 9. |
 | `adam-maj/tiny-gpu` | 256-byte memory, simulation-only, no C compiler. See [WHY-KARPATHY.md](WHY-KARPATHY.md) |
 | `deaneeth/tiny-gpu` | A Python simulator. Not hardware. |
 | Building an SoC in Platform Designer | Unnecessary — a prebuilt, pre-verified one exists. |
@@ -155,11 +160,11 @@ Confirmed working: the on-board USB-Blaster enumerates over USB
 | # | Deliverable | Done when |
 |---|---|---|
 | W1 | **Embedded model artifacts** — `embed/model260k.h`, `embed/tok512.h` | ✅ done. Byte counts verified: 1,056,540 and 6,227 |
-| W2 | **Golden reference** — run `stories260K` on macOS at fixed seed, temp 0; save the exact output | saved. It is both the bit-exactness reference and the webapp's replay stream |
+| W2 | **Golden reference** — run `stories260K` on macOS at **seed 42, temperature 1.0, top-p 0.9** (upstream defaults; determinism comes from the fixed seed, not from temp 0 — the shipped code does not use temp 0) | saved. It is both the bit-exactness reference and the webapp's replay stream |
 | W3 | **`run_baremetal.c`** — delete `read_checkpoint`'s entire mmap/fopen/fread/fseek/ftell path, point `weights_ptr` at the linked blob, replace every malloc/calloc with static arrays (working set is 676,192 B), stub `time()` | byte-identical output to W2, compiled with clang on macOS |
 | W4 | **Two details that decide whether it looks alive** | (a) `setvbuf(stdout, NULL, _IONBF, 0)` or tokens arrive in one block at the end and the board looks dead for 30 s; (b) print with `fputs`/`putchar`, **never `%f`** — newlib's float printf is enormous |
 | W5 | **Precompute the RoPE `powf()` table** — loop-invariant across tokens, and one of the two software-float hot spots | measurable speedup, or dropped if the FPU flag works |
-| W6 | **Tarball for Justin** — `run_baremetal.c`, both `.bin` files, README with the exact `objcopy`/`gcc` lines, and the expected first 20 tokens | handed over by 14:45 |
+| W6 | **Package for Justin** — `dist/llama-nios/`: `run_baremetal.c`, `model260k.h`, `tok512.h`, `expected_output.txt`, `bridge.py`, and JUSTIN-START-HERE.txt | handed over by 14:45. **No `.bin` files and no `objcopy` step** — the weights ship as the aligned C arrays, which removes both the symbol-name trap and an unaligned-`float*` failure that would have produced a *wrong story rather than a crash* on Nios II |
 | W7 | **Public webapp** — Cloudflare Worker + Durable Object on `*.workers.dev`: `POST /ingest` (bearer token), SSE `GET /stream`, live tokens + tok/s counter | live by 15:30, verified from a phone **on cellular**, not venue wifi |
 | W8 | **`bridge.py`** — stdlib only, ~40 lines: spawn `nios2-terminal`, read stdout char by char, POST batched chars every 250 ms | sent to Justin by 16:15. Outbound HTTPS only — no inbound port, no tunnel |
 | W9 | **The exact stage claim, written verbatim** before 18:00 | see "What we say" below |
@@ -223,7 +228,7 @@ Confirmed working: the on-board USB-Blaster enumerates over USB
 6. **17:30** — tokens on the board but the bridge not delivering → stop fixing the bridge, switch the page to **replay mode**. A recorded real result on a live public page beats a broken live pipe.
 7. **18:00** — hard freeze, unconditional.
 8. **19:00** — a screen recording of the live page **and** a phone video of the board must both exist. If not, stop rehearsing and make them.
-9. **ANY TIME** — if anyone proposes `stories15M`, stop them. It is the seductive middle option: 60.8 MB fp32 leaves no room for code or stack in 64 MB, and its 15–58 MB JTAG load is **2.6–17 minutes per edit-compile-test iteration**.
+9. **ANY TIME** — if anyone proposes `stories15M`, stop them. It is the seductive middle option: 15.2 M params, 60,816,028 bytes = **58.0 MiB of the 64 MiB SDRAM (90.6%)**, leaving no room for code, stack, or its 3.5 MB KV cache — and a 58 MB JTAG load is **8–17 minutes per edit-compile-test iteration**. Do not say "it doesn't fit"; say "it fits with nothing left over", which is both true and checkable.
 
 ---
 

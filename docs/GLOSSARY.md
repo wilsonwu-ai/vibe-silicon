@@ -137,7 +137,7 @@ Quartus and Wilson cannot help with it.
 | **inference** | *Using* a trained model, as opposed to training it. We only do inference — the hackathon's brief explicitly says start from a pretrained model. |
 | **parameters** | The learned numbers inside a model. GPT-4 has ~a trillion; ours has **292,000**. |
 | **token** | Roughly a word, or a word-piece. Models read and write tokens, not letters. |
-| **tokenizer** | The lookup table converting text to tokens and back. Ours knows 512 tokens; the bigger model's knows 32,000 — which is why *that* model is 97 MB and does not fit. |
+| **tokenizer** | The lookup table converting text to tokens and back. Ours knows 512 tokens; the bigger model's knows 32,000 — which is why *that* model is 58 MiB, filling 91% of the board's memory and leaving no room for anything else. |
 | **KV cache** | Memory of what the model has already read, so it does not recompute it for every new word. Trades memory for speed. |
 | **MAC** — Multiply-ACcumulate | Multiply two numbers, add to a running total, repeat. **This is what neural networks are, underneath.** Our model needs 259,328 of them per word. |
 | **rmsnorm, softmax, RoPE, attention** | The mathematical steps inside a transformer. We did not modify any of them — that is the point of generating our port with a script instead of hand-editing. |

@@ -8,14 +8,12 @@
  * Target: Nios II/f on the Intel FPGA University Program "DE10-Lite Computer".
  * No filesystem, no mmap, no heap, no argv.
  *
- * Build:
- *   nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 stories260K.bin model.o
- *   nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 tok512.bin     tok.o
- *   nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c model.o tok.o -o llama.elf -lm
+ * Build (model260k.h and tok512.h must sit next to this file):
+ *   nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c -o llama.elf -lm
  *   (drop -mcustom-fpu-cfg if it errors; soft float still works, just slower)
  *
  * Host verification (must print identically to upstream run.c):
- *   cc -O2 -DHOST_TEST run_baremetal.c -o run_baremetal -lm && ./run_baremetal
+ *   cc -O2 -Iembed src/run_baremetal.c -o run_baremetal -lm && ./run_baremetal
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,20 +23,36 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ blobs --
- * objcopy names symbols after the input path, so stories260K.bin becomes
- * _binary_stories260K_bin_start. On the host we splice in the .bin files
- * directly so the same source can be verified with cc before Justin sees it.
+ * No filesystem, so the weights have to arrive inside the executable. Two ways,
+ * and the default is the safe one:
+ *
+ *   default              -- model260k.h / tok512.h, C arrays declared
+ *                           __attribute__((aligned(8))). No .bin files, no
+ *                           objcopy, and the float* cast below is legal by
+ *                           construction. Same arrays the host build verifies.
+ *
+ *   -DBLOBS_FROM_OBJCOPY -- link stories260K.bin / tok512.bin as objects.
+ *                           objcopy names the symbol after the path you hand it,
+ *                           so only a bare filename produces the names below,
+ *                           and it promises NOTHING about alignment. Nios II
+ *                           masks the low bits of an unaligned word load instead
+ *                           of trapping, so a misaligned blob reads as
+ *                           plausible-but-wrong weights -- a wrong story, not a
+ *                           crash. Fallback only.
+ *
+ * -DHOST_TEST still selects the embedded path; it is left working because the
+ * host verification command above and older notes use it.
  */
-#ifdef HOST_TEST
-  #include "../embed/model260k.h"   /* model260k[],  model260k_len  */
-  #include "../embed/tok512.h"      /* tok512[],     tok512_len     */
-  #define MODEL_BLOB  ((const unsigned char*)model260k)
-  #define TOKEN_BLOB  ((const unsigned char*)tok512)
-#else
+#ifdef BLOBS_FROM_OBJCOPY
   extern const unsigned char _binary_stories260K_bin_start[];
   extern const unsigned char _binary_tok512_bin_start[];
   #define MODEL_BLOB  (_binary_stories260K_bin_start)
   #define TOKEN_BLOB  (_binary_tok512_bin_start)
+#else
+  #include "model260k.h"   /* model260k[],  model260k_len  -- aligned(8) */
+  #include "tok512.h"      /* tok512[],     tok512_len                   */
+  #define MODEL_BLOB  ((const unsigned char*)model260k)
+  #define TOKEN_BLOB  ((const unsigned char*)tok512)
 #endif
 
 /* ------------------------------------------------------------------ arena --

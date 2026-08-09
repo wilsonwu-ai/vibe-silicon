@@ -64,12 +64,17 @@ green), so "does it power on" is already answered.
 
 | | params | fp32 | int8 | MACs / token | verdict |
 |---|---|---|---|---|---|
-| **stories260K** | 292 K | **1.03 MB** | 0.29 MB | **0.26 M** | ✅ |
-| stories15M | 24.4 M | **97 MB** | 24.4 MB | 15.2 M | ❌ |
+| **stories260K** | 292 K | **1.01 MiB** | 0.29 MB | **0.26 M** | ✅ |
+| stories15M | 15.2 M | **58.0 MiB** | 14.5 MB | 15.2 M | ❌ |
 
-`stories15M` is 97 MB in fp32, which **exceeds the board's 64 MB of SDRAM**. Its
-32,000-entry embedding table dominates the parameter count. Even int8 at 24 MB, it
-needs 15.2 M MACs per token, which is seconds per token on any soft core.
+`stories15M` is 60,816,028 bytes in fp32 — **90.6 % of the board's 64 MiB SDRAM
+before a single byte of code, stack, or its 3.5 MB KV cache**. It fits and leaves
+nothing over, which is the worse kind of no. Its 32,000-entry embedding table
+dominates the parameter count. Even int8 at ~14.5 MB it needs 15.2 M MACs per
+token, which is seconds per token on any soft core.
+
+Say "it fits with nothing left over", not "it doesn't fit" — the checkpoint is
+public and anyone can see it is 58 MiB.
 
 `stories260K` is `dim=64, hidden=172, 5 layers, 8 heads (4 KV), vocab=512, ctx=512`
 and it writes readable stories:
@@ -113,7 +118,13 @@ Intel's **FPGA University Program** ships a prebuilt bitstream called the
 **"DE10-Lite Computer"**, bundled inside the **Intel FPGA Monitor Program**. It
 already contains, pre-synthesized and pre-verified:
 
-- a **Nios II/f** core — pipelined, with **hardware floating point**
+- **two** Nios II/f cores — pipelined, with **hardware floating point** (confirmed
+  2026-08-09 by reading `Computer_System.sopcinfo`: modules `Nios2` and
+  `Nios2_2nd_Core`, each with its own debug module and its own JTAG UART).
+  **Target `Nios2` — JTAG debug module `--instance 0`.** No `.jdi` file ships
+  with the prebuilt `.sof`, so `nios2-download`/`nios2-terminal` can't
+  auto-resolve which core you mean and will refuse to connect until you pass
+  `--instance` explicitly.
 - an **SDRAM controller** mapping the full **64 MB at `0x00000000`**
 - a **JTAG UART at `0xFF201000`** carrying `stdio` over the on-board USB-Blaster
 
@@ -252,18 +263,47 @@ board.**
 
 ### The build commands
 
-```bash
-# weights and tokenizer become linkable objects
-nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 stories260K.bin model.o
-nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 tok512.bin     tok.o
+Build **inside the Monitor Program**, the same project flow as the stock sample:
+it owns the BSP, the linker script and the `stdio`→JTAG-UART wiring, and a bare
+`nios2-elf-gcc` command line has none of those — that ELF compiles but will not
+boot. `run_baremetal.c` plus `model260k.h` and `tok512.h` in the same folder is
+the whole input; there is no separate objcopy step.
 
-# compile; drop -mcustom-fpu-cfg if it errors
-nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c model.o tok.o -o llama.elf -lm
+```bash
+# compile check only (no system linker script -- not a runnable ELF)
+# drop -mcustom-fpu-cfg if it errors
+nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c -o llama.elf -lm
+
+# program the prebuilt system -- required again after every power cycle,
+# because MAX 10 reloads its factory image from on-chip flash
+quartus_pgm -m jtag -o "p;<DE10-Lite_Computer.sof>"
 
 # load (~9-70 s for the ~1.1 MB ELF over JTAG) and watch
-nios2-download -c "USB-Blaster [USB-0]" -g llama.elf
-nios2-terminal
+# --instance 0 targets the Nios2 core -- required, see Step 3 above
+nios2-download -c "USB-Blaster [USB-0]" --instance 0 -g llama.elf
+nios2-terminal -c "USB-Blaster [USB-0]" --instance 0
 ```
+
+Only one program can hold the USB-Blaster: close the Quartus Programmer and any
+other `nios2-terminal` first, or `quartus_pgm`/`nios2-download` fail with
+`Error (209042): Application nios2-terminal ... is using the target device`.
+Check with `tasklist | grep nios2-terminal` and kill any stale one before
+retrying — this bit us twice in one session on 2026-08-09.
+
+**Verified end-to-end 2026-08-09**, using the bundled `JTAG_UART` sample in
+place of `llama.elf`: `quartus_pgm` → `nios2-download --instance 0 -g` →
+`nios2-terminal --instance 0` printed the sample's banner and echoed typed
+characters back. Confirms the whole chain — fabric, soft core, JTAG UART,
+host link — works on this exact board before touching the model.
+
+**Why not `objcopy -I binary` on the `.bin` files.** It was the original plan and
+it has two traps. The symbol name is derived from the path you pass, so only a
+bare filename links; and it makes no alignment promise, while `read_checkpoint()`
+casts the blob to `float*`. Nios II masks the low address bits on an unaligned
+word load instead of trapping, so a misaligned model yields a *wrong story rather
+than a crash* — the worst failure mode to debug under time pressure.
+`embed/*.h` is `__attribute__((aligned(8)))`, so the header path cannot hit it.
+The objcopy route still exists behind `-DBLOBS_FROM_OBJCOPY` if it is ever needed.
 
 ### A free sanity check
 
@@ -295,10 +335,13 @@ No ethernet, no serial port. Options:
 | 7-segment displays | trivial, no host, good for a MAC-count or token-count readout |
 | GPIO → USB-serial adapter / Arduino bridge | works, needs a spare part |
 
-**Recommended wiring for the demo:** Justin's machine reads tokens over JTAG UART
-and POSTs them to Wilson's laptop over the venue LAN; Wilson's laptop serves the
-public page through a Cloudflare tunnel. That satisfies Sundai's "get off
-localhost" rule with no extra hardware.
+**Wiring for the demo, as built:** `bridge.py` on Justin's PC spawns
+`nios2-terminal`, reads tokens over JTAG UART, and POSTs them straight to the
+Cloudflare Worker over outbound HTTPS. No LAN hop to Wilson's laptop, no
+`cloudflared` tunnel, nothing listening on the venue network — so there is no
+inbound port to be blocked and the page survives Wilson's laptop sleeping or
+leaving the building. Satisfies Sundai's "get off localhost" rule with no extra
+hardware.
 
 ## Kill criteria
 

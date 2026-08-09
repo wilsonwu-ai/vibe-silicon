@@ -53,12 +53,14 @@ there.
 
 | | params | fp32 | int8 | MACs / token | verdict |
 |---|---|---|---|---|---|
-| **stories260K** | 292 K | **1.03 MB** | 0.29 MB | **0.26 M** | ✅ ships |
-| stories15M | 24.4 M | 97 MB | 24.4 MB | 15.2 M | ❌ exceeds 64 MB SDRAM in fp32 |
+| **stories260K** | 292 K | **1.01 MiB** | 0.29 MB | **0.26 M** | ✅ ships |
+| stories15M | 15.2 M | **58.0 MiB** | 14.5 MB | 15.2 M | ❌ 90.6 % of SDRAM before anything else |
 
-`stories15M` is not "too slow", it is too **big** — 97 MB of fp32 weights against
-64 MB of SDRAM, because its 32,000-entry embedding table dominates. `stories260K`
-is `dim=64, 5 layers, 8 heads, vocab=512` and uses **2.6 % of the board's memory**,
+`stories15M` is not "too slow", it is too **big** — its 32,000-entry embedding
+table dominates, and 60,816,028 bytes of fp32 weights is **90.6 % of the 64 MiB
+SDRAM on their own**, before code, stack, or its 3.5 MB KV cache. It fits and
+leaves nothing over, which is worse than not fitting. `stories260K` is
+`dim=64, 5 layers, 8 heads, vocab=512` and uses **2.6 % of the board's memory**,
 runtime state included.
 
 It also writes real sentences:
@@ -76,16 +78,21 @@ It also writes real sentences:
    ┌───────────────────────────────────────────┐
    │  MAX 10 fabric (50K LE, 144 multipliers)  │
    │                                           │
-   │   soft RISC-V core  ──►  SDRAM ctrl ──► 64 MB SDRAM
+   │   soft Nios II/f core ─►  SDRAM ctrl ──► 64 MB SDRAM
    │        │                                  │
    │        └──► int8 MAC array  ◄─ LLM-written Verilog
    │        │                                  │
    │        └──► JTAG UART ──► tokens          │
    └───────────────────────────────────────────┘
                   │
-                  ▼   (Justin's machine, over the venue LAN)
-          web UI + cloudflared tunnel   (Wilson's laptop)
+                  ▼   nios2-terminal on Justin's PC
+             bridge.py ──── outbound HTTPS ────► Cloudflare Worker
+                                                 (public page, anyone's browser)
 ```
+
+The core is **Nios II/f**, Intel's soft processor — not RISC-V. Nothing listens on
+the venue network: the bridge POSTs outward, so there is no inbound port, no
+tunnel, and nothing for conference wifi to block.
 
 **Quartus does not run on macOS.** Synthesis is Justin's machine only. That fixes
 who does what for the whole day.

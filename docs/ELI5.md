@@ -87,7 +87,8 @@ is called a **soft core**. There are free, open-source ones you can drop in.
 
 So the plan is:
 
-1. Place a small RISC-V processor into the fabric.
+1. Place a small processor into the fabric — Intel's **Nios II**, which is their
+   own design, not a RISC-V one.
 2. Wire it to the 64 MB of SDRAM.
 3. Compile a language model to run on it.
 4. It writes a story.
@@ -117,9 +118,11 @@ It is a real transformer — same architecture as the big ones — just small en
 to fit. It uses **2.6% of the board's memory**, including all its working space.
 
 We originally planned to use `stories15M`, which is 50× bigger. That one is dead,
-and not because it is slow: in full precision it is **97 MB, and the board only
-has 64 MB**. It literally does not fit. (Most of its size is the vocabulary table:
-32,000 words versus 512.)
+and not because it is slow: in full precision it is **58 MB against the board's
+64 MB**. It fits — with about 6 MB to spare, which has to hold the program, the
+stack, and 3.5 MB of the model's own scratch memory. So it fits and leaves nothing
+over, which is worse than not fitting at all. (Most of its size is the vocabulary
+table: 32,000 words versus 512.)
 
 Nobody is impressed by what the model *says*. They are impressed by **where it
 runs**.

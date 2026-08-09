@@ -13,6 +13,9 @@ FILES = {"stories260K.bin": f"{BASE}/stories260K/stories260K.bin",
          "tok512.bin":      f"{BASE}/stories260K/tok512.bin"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS, EMBED = os.path.join(ROOT, "models"), os.path.join(ROOT, "embed")
+# The headers are also the build inputs for Justin's folder, which has to work
+# as a standalone zip. Written to both places so they cannot drift apart.
+DIST = os.path.join(ROOT, "dist", "llama-nios")
 
 
 def fetch(name, url):
@@ -38,6 +41,7 @@ def emit(path, blob, sym, src):
 
 def main():
     os.makedirs(EMBED, exist_ok=True)
+    os.makedirs(DIST, exist_ok=True)
     model = open(fetch("stories260K.bin", FILES["stories260K.bin"]), "rb").read()
     tok = open(fetch("tok512.bin", FILES["tok512.bin"]), "rb").read()
 
@@ -45,8 +49,9 @@ def main():
     cfg = dict(zip(keys, struct.unpack("<7i", model[:28])))
     print("  config:", cfg)
 
-    emit(os.path.join(EMBED, "model260k.h"), model, "model260k", "stories260K.bin")
-    emit(os.path.join(EMBED, "tok512.h"), tok, "tok512", "tok512.bin")
+    for d in (EMBED, DIST):
+        emit(os.path.join(d, "model260k.h"), model, "model260k", "stories260K.bin")
+        emit(os.path.join(d, "tok512.h"), tok, "tok512", "tok512.bin")
 
     dim, hd, L, nh, nkv, V, SL = (cfg[k] for k in keys)
     kvd = (dim // nh) * nkv

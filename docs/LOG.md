@@ -42,12 +42,21 @@ The plan called for `stories15M`. Measured against the real files:
 
 | | params | fp32 | MACs/token | verdict |
 |---|---|---|---|---|
-| stories260K | 292 K | **1.03 MB** | 259,328 | ✅ |
-| stories15M | 24.4 M | **97 MB** | 15.2 M | ❌ |
+| stories260K | 292 K | **1.01 MiB** | 259,328 | ✅ |
+| stories15M | 15.2 M | **58.0 MiB** | 15.2 M | ❌ |
 
-`stories15M` is not too slow. It is **too big** — 97 MB of weights against 64 MB
-of SDRAM. It does not fit, and most of its size is a 32,000-entry vocabulary
+`stories15M` is not too slow. It is **too big** — 60,816,028 bytes of weights
+against 64 MiB of SDRAM, which is 90.6% of it before the program, the stack, or
+the model's own 3.5 MB KV cache. Most of its size is a 32,000-entry vocabulary
 table against our 512.
+
+> **Corrected 13:30.** This entry originally read "24.4 M params, 97 MB, does not
+> fit". Both numbers were wrong and the conclusion was overstated. Checked against
+> the actual checkpoint header on HuggingFace: `dim 288 · hidden 768 · 6 layers ·
+> 6 heads · vocab 32,000 · ctx 256`, file size 60,816,028 bytes = 15.2 M params.
+> It **does** fit in 64 MiB — with ~6 MiB left for everything else, which is why
+> it is still dead. Say "fits with nothing left over", not "does not fit": the
+> checkpoint is public and the file size is one click away.
 
 `stories260K` uses **2.6%** of the board including runtime state, and writes
 readable prose.

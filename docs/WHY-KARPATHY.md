@@ -100,9 +100,11 @@ with no dependencies.** No operating system needed, no libraries, nothing to
 install. That's exactly the situation on a bare FPGA, where there is no operating
 system to give you anything.
 
-> We also checked the bigger model, `stories15M`. It's dead: **97 MB in full
-> precision against 64 MB of memory on the board.** It doesn't fit. Most of its
-> size is a 32,000-word vocabulary table; ours has 512 words.
+> We also checked the bigger model, `stories15M`. It's dead: **58 MB in full
+> precision against 64 MB of memory on the board** — 91% of it, before the program,
+> the stack, or the model's own 3.5 MB of scratch space. It fits and leaves nothing
+> over, which is the worse kind of no. Most of its size is a 32,000-word vocabulary
+> table; ours has 512 words.
 
 ---
 
@@ -113,9 +115,10 @@ Here's the part that surprises people.
 The board has **no processor.** None. It's a blank sheet of reconfigurable
 circuitry.
 
-So we build one. We describe a small RISC-V processor in code, load it onto the
-FPGA, and now the chip *is* a computer. Then we compile the language model for the
-computer we just made.
+So we build one. We take a description of a small processor — Intel's Nios II,
+their own design rather than a RISC-V one — load it onto the FPGA, and now the
+chip *is* a computer. Then we compile the language model for the computer we just
+made.
 
 > **The stage line:** we synthesized a processor into the fabric and ran a language
 > model on it. No ARM chip, no operating system. Every gate between the power plug
