@@ -35,3 +35,5 @@ dist/*.tar.gz
 # never commit the ingest secret
 *ingest-token*
 .dev.vars
+
+dist/*.zip

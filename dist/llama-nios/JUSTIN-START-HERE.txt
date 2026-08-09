@@ -1,0 +1,154 @@
+JUSTIN - START HERE
+===================
+
+Everything you need is in this folder. Run the commands in order. Anything you
+can do before Quartus 18.1 finishes installing is marked NOW.
+
+
+-------------------------------------------------------------------------------
+STEP 1  (NOW - needs nothing but the Quartus 25.1 you already have)
+-------------------------------------------------------------------------------
+
+Prove the board is alive. This does NOT need Nios II, and the Programmer works
+in every Quartus version.
+
+    jtagconfig
+
+You want to see a USB-Blaster with a 10M50 device.
+
+  - Nothing listed?  It is the driver. It lives under <quartus>\drivers -- point
+    Device Manager at that folder for the unrecognised USB device.
+  - Still nothing?   Different cable, different USB port. The board is confirmed
+    working (it arrived running the factory 7-segment demo).
+
+Then open Programmer in 25.1 and load any prebuilt .sof from the DE10-Lite
+System CD. If the LEDs or 7-segments change, board + cable + driver are all good
+and you can stop worrying about hardware for the rest of the day.
+
+Do this while 18.1 installs. Finding a driver problem now instead of at 3pm is
+worth an hour.
+
+
+-------------------------------------------------------------------------------
+STEP 2  (NOW - no board needed, no Nios II needed)
+-------------------------------------------------------------------------------
+
+Prove the public page works from your machine. Ask Wilson for the token.
+
+    python bridge.py --token <TOKEN> --replay expected_output.txt --cps 12
+
+Open https://vibe-silicon.wilson-af8.workers.dev and you should see words
+appearing. The page will label it "streaming - recorded run", because it is.
+
+If that works, the whole network path from your PC to the public demo is proven
+before the board is even in the picture.
+
+Needs only the Python standard library. Nothing to pip install.
+
+
+-------------------------------------------------------------------------------
+STEP 3  (after Quartus 18.1 + Intel FPGA Monitor Program 18.1 are installed)
+-------------------------------------------------------------------------------
+
+Confirm the toolchain exists:
+
+    nios2-elf-gcc --version
+
+Then, in the Monitor Program:
+
+    File > New Project
+      > select the "DE10-Lite Computer" predesigned system
+      > load one of the BUNDLED SAMPLE C PROGRAMS
+      > Compile, Load, Run
+
+Do the stock sample FIRST, before ours. If it prints to the terminal window, the
+prebuilt bitstream, the JTAG UART and the compiler are all working, and anything
+that breaks after this point is our code, not the setup.
+
+>>> THE ONE SETTING THAT SILENTLY EATS AN HOUR <<<
+
+In the BSP / Monitor Program linker settings, put .text .rodata .data .bss heap
+and stack in SDRAM (0x00000000, 64 MB). NOT the 64 KB on-chip RAM.
+
+Our program needs about 1.8 MB. It does not fit on-chip, and the failure mode is
+a HANG WITH NO ERROR MESSAGE. If nothing prints later, check this first.
+
+
+-------------------------------------------------------------------------------
+STEP 4  (build ours)
+-------------------------------------------------------------------------------
+
+Open a Nios II Command Shell and cd INTO THIS FOLDER. Then:
+
+    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 stories260K.bin model.o
+    nios2-elf-objcopy -I binary -O elf32-littlenios2 -B nios2 tok512.bin     tok.o
+    nios2-elf-gcc -O2 -mcustom-fpu-cfg=60-2 run_baremetal.c model.o tok.o -o llama.elf -lm
+
+  *** cd INTO THIS FOLDER FIRST. ***
+  objcopy builds the symbol name out of the PATH you hand it. If you pass
+  "downloads\llama-nios\stories260K.bin" the symbol becomes
+  _binary_downloads_llama_nios_stories260K_bin_start and it will not link.
+  A bare filename gives _binary_stories260K_bin_start, which is what the C
+  file expects.
+
+  If -mcustom-fpu-cfg=60-2 errors, DROP IT. Soft float still works, just
+  slower. That is a speed problem, not a correctness problem.
+
+
+-------------------------------------------------------------------------------
+STEP 5  (run it)
+-------------------------------------------------------------------------------
+
+    nios2-download -c "USB-Blaster [USB-0]" -g llama.elf
+    nios2-terminal
+
+The ELF is about 1.1 MB, so expect 9-70 seconds to load over JTAG. Then words
+start appearing one at a time.
+
+It should say:
+
+    Once upon a time, there was a little girl named Lily. She loved to play
+    outside in the sun. One day, her mom asked her to teach him a nice way to
+    play in the sun.
+
+Full expected text is in expected_output.txt. The seed is fixed at 42, so this
+is deterministic -- you should get exactly those words.
+
+  - Right words      -> it works. Time 256 tokens with a stopwatch and send
+                        Wilson the seconds-per-token. We want a measured number
+                        on the slide, not an estimate.
+  - Different words  -> model loaded, float math is off. Tell Wilson.
+  - Garbage/nothing  -> linker regions. See Step 3.
+
+
+-------------------------------------------------------------------------------
+STEP 6  (put it on the public page)
+-------------------------------------------------------------------------------
+
+    python bridge.py --token <TOKEN> --reset
+
+This spawns nios2-terminal itself, forwards everything it prints to the public
+page, and mirrors it in your console so you can watch too. The page label
+switches to "live from the board".
+
+If nios2-terminal needs arguments on your machine:
+
+    python bridge.py --token <TOKEN> --cmd "nios2-terminal -i 0"
+
+
+-------------------------------------------------------------------------------
+WHAT THIS ACTUALLY IS
+-------------------------------------------------------------------------------
+
+run_baremetal.c is Karpathy's llama2.c with the operating system removed. Every
+neural-network function is byte-for-byte upstream -- only file I/O and memory
+allocation changed, because the board has no filesystem and no heap.
+
+Verified on macOS before you got it: identical output to upstream run.c.
+md5 = 8e6e99ed83fc476e1a33bc0940ecffa1
+
+Model is stories260K: 292K parameters, 1,056,540 bytes, 259,328 multiply-adds
+per token. It uses 2.6% of the board's 64 MB SDRAM including working space.
+
+Repo: https://github.com/wilsonwu-ai/vibe-silicon
+Page: https://vibe-silicon.wilson-af8.workers.dev
