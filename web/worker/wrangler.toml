@@ -1,0 +1,16 @@
+name = "vibe-silicon"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+
+[[durable_objects.bindings]]
+name = "STREAM"
+class_name = "TokenStream"
+
+# SQLite-backed DOs are the ones available on the Workers Free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TokenStream"]
+
+# INGEST_TOKEN is a SECRET, not a var -- a plaintext [vars] entry of the same
+# name collides with the secret binding (CF error 10053). Set it with:
+#   wrangler secret put INGEST_TOKEN

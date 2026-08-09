@@ -31,3 +31,7 @@ models/
 # generated / vendored
 vendor/run.c
 dist/*.tar.gz
+
+# never commit the ingest secret
+*ingest-token*
+.dev.vars
