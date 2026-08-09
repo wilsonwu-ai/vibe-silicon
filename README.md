@@ -128,6 +128,7 @@ docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md
 | [docs/WHY-KARPATHY.md](docs/WHY-KARPATHY.md) | why Karpathy's model and not the two `tiny-gpu` repos |
 | [docs/ELI5.md](docs/ELI5.md) | all of it in plain English, from "what is an FPGA" |
 | [board/README.md](board/README.md) | DE10-Lite bring-up and the soft-core decision |
+| [board/WINDOWS-SETUP.md](board/WINDOWS-SETUP.md) | getting a second Windows machine compiling |
 
 ## Quickstart
 
