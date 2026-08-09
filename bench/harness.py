@@ -48,6 +48,14 @@ TASKS_DIR = ROOT / "tasks"
 BUILD_DIR = ROOT / "build"
 RESULTS = ROOT / "results" / "results.jsonl"
 
+# NOTE ON THE SYSTEM PROMPTS BELOW -- do not "improve" the opening sentence.
+# "You write synthesizable Verilog-2001 for FPGA targets." trips claude-opus-5's
+# refusal classifier: empty content, 3 output tokens, stop_reason="refusal",
+# reproducibly, on a benign MAC-unit spec. Dropping the trailing period or
+# rewording to "Respond with ... suitable for an FPGA target." clears it. This
+# was measured, not guessed -- see docs/LOG.md. Both prompts must stay the same
+# length and structure or the benchmark measures the prompt, not the models.
+#
 # Per-model request shaping. Opus 5 and Sonnet 5 take adaptive thinking plus an
 # effort level; Haiku 4.5 predates both and rejects them.
 MODELS = {
@@ -69,7 +77,7 @@ MODELS = {
 # making the mirrored edit to the other.
 # ---------------------------------------------------------------------------
 
-SYSTEM = """You write synthesizable Verilog-2001 for FPGA targets.
+SYSTEM = """Respond with synthesizable Verilog-2001 suitable for an FPGA target.
 
 Output requirements:
 - Emit exactly one Verilog module and nothing else. No prose, no explanation.
@@ -77,9 +85,9 @@ Output requirements:
   spec exactly. A testbench you cannot see instantiates it by name and by port.
 - Synthesizable constructs only. No delays, no initial blocks, no $display,
   no system tasks.
-- Target: Intel Cyclone V. Signed arithmetic must be explicitly signed."""
+- Signed arithmetic must be explicitly signed."""
 
-SYSTEM_VHDL = """You write synthesizable VHDL-2008 for FPGA targets.
+SYSTEM_VHDL = """Respond with synthesizable VHDL-2008 suitable for an FPGA target.
 
 Output requirements:
 - Emit exactly one VHDL entity and architecture and nothing else. No prose,
@@ -88,7 +96,7 @@ Output requirements:
   spec exactly. A testbench you cannot see instantiates it by name and by port.
 - Synthesizable constructs only. No delays, no initial values, no report
   statements, no textio.
-- Target: Intel Cyclone V. Signed arithmetic must be explicitly signed."""
+- Signed arithmetic must be explicitly signed."""
 
 
 def extract_verilog(text: str) -> str:
@@ -265,6 +273,8 @@ LANGS = {
 # Ordered earliest-to-latest. A row lands in exactly one bucket: the stage the
 # attempt died at, or "pass".
 STAGES = ("no-code", "lint", "elaborate", "simulate", "pass")
+STAGE_ABBR = {"no-code": "nocode", "lint": "lint", "elaborate": "elab",
+              "simulate": "sim", "pass": "pass"}
 
 
 def stage_of(row: dict) -> str:
@@ -361,9 +371,11 @@ def report(path: Path) -> None:
 
     # -- 2. where in the pipeline it stopped -------------------------------
     print("\n== where it stopped (count of attempts) ==")
-    hdr = "  ".join(f"{s:>9}" for s in STAGES)
-    print(f"{'lang':<8} {'model':<{mw}} {'n':>4}  {hdr}")
-    print("-" * (8 + mw + 8 + len(hdr)))
+    hdr = f"{'lang':<8} {'model':<{mw}} {'n':>4}   " + " ".join(
+        f"{STAGE_ABBR[s]:>6}" for s in STAGES
+    )
+    print(hdr)
+    print("-" * len(hdr))
     for lang in langs:
         for model in models:
             rs = sel(lang=lang, model=model)
@@ -372,20 +384,38 @@ def report(path: Path) -> None:
             counts = {s: 0 for s in STAGES}
             for r in rs:
                 counts[stage_of(r)] += 1
-            cells = "  ".join(f"{counts[s]:>9}" for s in STAGES)
-            print(f"{lang:<8} {model:<{mw}} {len(rs):>4}  {cells}")
+            cells = " ".join(f"{counts[s]:>6}" for s in STAGES)
+            print(f"{lang:<8} {model:<{mw}} {len(rs):>4}   {cells}")
 
-    print("\n  no-code   = model returned nothing extractable")
-    print("  lint      = the compiler would not parse it standalone")
-    print("  elaborate = parsed, but would not bind to the testbench")
-    print("  simulate  = built and ran, computed the wrong answer")
+    print("\n  nocode = model returned nothing extractable")
+    print("  lint   = the compiler would not parse it standalone")
+    print("  elab   = parsed, but would not bind to the testbench")
+    print("  sim    = built and ran, computed the wrong answer")
+
+    # API refusals are not evidence about a language. They land in `nocode`
+    # and enter the pass-rate denominator, so if they fall unevenly across
+    # languages they bias the headline. Surface them rather than bury them.
+    refused = [r for r in rows if r.get("refused")]
+    if refused:
+        print(f"\n  !! {len(refused)} of {len(rows)} attempts were API refusals, "
+              "counted above as nocode:")
+        for lang in langs:
+            for model in models:
+                n = len([r for r in refused
+                         if lang_of(r) == lang and r.get("model") == model])
+                if n:
+                    tot = len(sel(lang=lang, model=model))
+                    print(f"       {lang:<8} {model:<{mw}} {n}/{tot}")
+        print("     A refusal measures the API, not the language. If these are")
+        print("     lopsided across languages, exclude them before quoting a delta.")
 
     # -- 3. per-task comparison --------------------------------------------
     print("\n== pass rate by task x language ==")
-    head = "  ".join(f"{lang:>14}" for lang in langs)
-    delta_col = f"{'delta':>10}" if len(langs) == 2 else ""
-    print(f"{'task':<{tw}}  {head}{('  ' + delta_col) if delta_col else ''}")
-    print("-" * (tw + 2 + len(head) + (len(delta_col) + 2 if delta_col else 0)))
+    hdr = f"{'task':<{tw}}  " + "  ".join(f"{lang:^14}" for lang in langs)
+    if len(langs) == 2:
+        hdr += f"  {'delta':>9}"
+    print(hdr)
+    print("-" * len(hdr))
     for task in tasks:
         cells, rates = [], []
         for lang in langs:
@@ -394,8 +424,11 @@ def report(path: Path) -> None:
             cells.append(f"{f'{ok}/{n}':>6}{_rate(ok, n):>8}")
             rates.append(100.0 * ok / n if n else None)
         line = f"{task:<{tw}}  " + "  ".join(cells)
-        if len(langs) == 2 and rates[0] is not None and rates[1] is not None:
-            line += f"  {rates[1] - rates[0]:>+9.1f}"
+        if len(langs) == 2:
+            if rates[0] is not None and rates[1] is not None:
+                line += f"  {rates[1] - rates[0]:>+7.1f}pt"
+            else:
+                line += f"  {'--':>9}"
         print(line)
 
     # -- 4. headline --------------------------------------------------------

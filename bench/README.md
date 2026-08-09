@@ -1,5 +1,12 @@
 # How bad are LLMs at writing hardware?
 
+> ⚠️ **Read [FINDINGS.md](FINDINGS.md) before quoting any number from this
+> benchmark.** It ran, it produced 96.3% vs 96.3%, and that result is **not
+> trustworthy** — the two languages are not graded to the same standard, the
+> tasks are too easy to discriminate, and an earlier run reported a confident
+> −14.8 point delta that was purely an API artifact. The apparatus is real; the
+> headline is not yet.
+
 The question, precisely: **given the same specification, how much worse are LLMs
 at VHDL than at Verilog?**
 
