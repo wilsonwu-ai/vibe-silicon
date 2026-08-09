@@ -38,7 +38,8 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 | J5 | linker regions in SDRAM | ✅ **done** — the BSP defaults are already correct for this system; verified by section *address*, not by dialog |
 | J6 | **build ours and run it** | ✅ **DONE — 256 tokens on the board, byte-identical to the golden reference** |
 | J7 | measure s/token | ✅ **done — 1.020 s/token, 0.98 tok/s** (measured, not estimated) |
-| J8–J9 | bridge to the public page, insurance | ⬜ |
+| J8 | **bridge → public page** | ✅ **DONE and verified end to end** — see [E2E-VERIFIED.md](E2E-VERIFIED.md) |
+| J9 | insurance: .sof/.elf on a second machine | 🔄 in progress |
 
 **The primary path is done.** The model generates all 256 tokens on the FPGA and
 the output is byte-identical to the macOS reference — there is no float
