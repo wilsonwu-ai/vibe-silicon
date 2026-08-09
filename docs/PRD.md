@@ -13,11 +13,11 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 
 | | | |
 |---|---|---|
-| **Wilson Wu** | Founder & CEO, Dubbs Capital · CRO, Snappy · Owner-operator, Union Made Apparel · MSCS in progress, Georgia Tech OMSCS | [linkedin.com/in/wilson1wu](https://www.linkedin.com/in/wilson1wu/) · [@wilsonwu-ai](https://github.com/wilsonwu-ai) |
-| **Justin Pacella** | Software Engineer, Agentic Highway · Northeastern University | [linkedin.com/in/jtp75](https://www.linkedin.com/in/jtp75/) · [@jtp75](https://github.com/jtp75) |
+| **Wilson Wu** | B2B SaaS / OMSCS GaTech / Duke MBA | [LinkedIn](https://www.linkedin.com/in/wilson1wu/) · [@wilsonwu-ai](https://github.com/wilsonwu-ai) |
+| **Justin Pacella** | Software Engineer, Agentic Highway · Northeastern University | [LinkedIn](https://www.linkedin.com/in/jtp75/) · [@jtp75](https://github.com/jtp75) |
 
-> Titles above are from public sources — LinkedIn blocks automated reads (HTTP 999).
-> Correct them directly if either is wrong.
+> Justin's title is from public sources — LinkedIn blocks automated reads (HTTP 999).
+> Correct it directly if it is wrong.
 
 ---
 

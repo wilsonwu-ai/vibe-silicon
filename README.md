@@ -170,4 +170,8 @@ MIT.
 ---
 
 **Built at [Sundai Club](https://www.sundai.club) — Hack 135, August 9 2026.**
-Justin Pacella ([@jtp75](https://github.com/jtp75)) · Wilson Wu ([@wilsonwu-ai](https://github.com/wilsonwu-ai))
+**Justin Pacella** — Software Engineer, Agentic Highway · Northeastern
+[LinkedIn](https://www.linkedin.com/in/jtp75/) · [@jtp75](https://github.com/jtp75)
+
+**Wilson Wu** — B2B SaaS / OMSCS GaTech / Duke MBA
+[LinkedIn](https://www.linkedin.com/in/wilson1wu/) · [@wilsonwu-ai](https://github.com/wilsonwu-ai)
