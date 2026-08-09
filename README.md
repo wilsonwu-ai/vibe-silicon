@@ -6,6 +6,15 @@ Verilog was written by an LLM.
 
 Sundai Hack 135 — Foundation Models for the Physical World (Aug 9, 2026)
 
+> ### ✅ It works — measured on the board
+>
+> **256 tokens generated on the FPGA. Output byte-identical to the reference.
+> 1.020 s/token (0.98 tok/s), measured, not estimated.**
+>
+> There is no float divergence between the soft core and the macOS host — they
+> agree exactly for all 256 tokens. Numbers, profile, and the reason it is 1 s
+> and not the 0.1 s we predicted: [`docs/HARDWARE-RESULTS.md`](docs/HARDWARE-RESULTS.md).
+
 ### ▶ Live demo — **https://vibe-silicon.wilson-af8.workers.dev**
 
 Streams tokens from the board as they are generated. When the board is not
@@ -128,6 +137,7 @@ docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md
 
 | doc | what it answers |
 |---|---|
+| **[docs/HARDWARE-RESULTS.md](docs/HARDWARE-RESULTS.md)** | **what the board actually did, measured — speed, profile, and why it is 1 s/token** |
 | **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | **every term and acronym, for readers new to hardware — start here** |
 | [docs/LOG.md](docs/LOG.md) | play-by-play of the day, including the wrong turns |
 | [bench/FINDINGS.md](bench/FINDINGS.md) | benchmark results — and why the headline number should not be quoted |

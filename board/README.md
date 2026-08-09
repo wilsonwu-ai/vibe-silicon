@@ -243,23 +243,41 @@ In the BSP / Monitor Program **linker settings**, place `.text`, `.rodata`,
 Our footprint is 1.7 MB. It does not fit on-chip, and the failure mode is **a hang
 with no error message**. Budget an hour to lose here if you miss it.
 
-### Expected speed
+### Speed — **measured**, 2026-08-09
 
-Derived, not measured — anchored to an STM32H7 Cortex-M7 at 280 MHz running this
-exact model at 87 tok/s.
+**1.020 s/token · 0.98 tok/s.** 256 tokens in 261 s, output byte-identical to the
+golden reference. Full detail in [`docs/HARDWARE-RESULTS.md`](../docs/HARDWARE-RESULTS.md).
 
-| configuration | seconds / token |
-|---|---|
-| Nios II/f **with** hardware FPU (`-mcustom-fpu-cfg=60-2`) | **0.1 – 0.2** |
-| Nios II/f, software float | 0.7 – 1.8 |
-| Nios II/e, software float | 1.2 – 3.0 |
+The earlier estimate on this page was **0.1–0.2 s/token with the hardware FPU**.
+That was wrong by 5–10×, and the FPU is not the reason:
 
-If `-mcustom-fpu-cfg=60-2` errors at compile time, **drop the flag**. Soft float
-still generates tokens, just slower. That is a performance risk, not a viability
-risk.
+- `-mcustom-fpu-cfg=60-2` is present in the generated `public.mk`
+- the linked image contains 66 `custom` instructions (opcodes 252–255)
 
-**Do not put a tokens/sec number on a slide until it has been measured on the
-board.**
+The FPU survived and is working. We are still at ~1 s/token. **The flag is not
+the difference between 0.1 s and 3 s per word** — that framing should not be
+repeated.
+
+The real reason is a property of the prebuilt system nobody had checked:
+
+```
+ALT_CPU_DCACHE_SIZE 0      <-- the core has NO DATA CACHE
+ALT_CPU_ICACHE_SIZE 4096
+ALT_CPU_FREQ 100000000     impl = Fast
+```
+
+Every one of the ~259,000 weight reads per token is an individual uncached
+transaction to a 16-bit SDRAM. Measured on the board: 357 ns per 4-byte SDRAM
+read, 298 ns for a dependent float multiply-add, **722 ns per MAC** in the real
+`matmul`. The two costs add rather than overlap, because with no cache there is
+no prefetch and no burst.
+
+If `-mcustom-fpu-cfg=60-2` errors at compile time, drop it — but on this system
+the BSP supplies it automatically and it does not error.
+
+**The number on the slide is 1.02 s/token, measured.** It is not embarrassing;
+the gap between what the fabric could do and what a cacheless soft core actually
+does is the honest and more interesting story.
 
 ### The build commands
 

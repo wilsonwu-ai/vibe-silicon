@@ -243,6 +243,75 @@ with credit to Eugene.
 
 ---
 
+## 14:00 — The model runs on the FPGA, and the output is exact
+
+`quartus_pgm` → prebuilt DE10-Lite Computer, configured in 4 seconds. BSP
+generated straight from `Computer_System.sopcinfo`, `llama.elf` built with the
+model as a C array, downloaded over JTAG in 20 s.
+
+**256 tokens. Byte-identical to `expected_output.txt`.** The soft core and the
+macOS host agree exactly, all 574 bytes — the float-divergence worry that the
+instructions warn about ("different words = float math") simply did not happen.
+
+The linker-region trap — the one the docs call the single most likely way to lose
+an hour — never fired. `nios2-bsp` chose correctly on its own:
+`"Default linker sections mapped to SDRAM"`. Verified by section *address*
+(`.rodata` at `0x21028`, on-chip SRAM at `0x08000000` holding nothing) rather
+than by trusting a dialog.
+
+## 14:05 — Two surprises in a bitstream we thought we understood
+
+**The prebuilt system is dual-core.** Two Nios II, two JTAG UARTs, and no `.jdi`
+to disambiguate them — so `nios2-download` and `nios2-terminal` refuse to connect
+at all until given `--device 1 --instance 0`. Nothing in the plan mentioned a
+second core.
+
+**A run that looked exactly like the documented failure was not one.** Output
+appeared to stall at 434 of 578 bytes and sat frozen for 90 seconds — textbook
+"stops early". An instrumented build printed `<LOOP-EXIT pos=256 steps=256>` and
+the complete story: the program was fine, the *capture* had stopped. Diagnose the
+output path before believing a hang.
+
+## 14:20 — 1.02 s/token, and the estimate was wrong for an interesting reason
+
+Measured: **1.020 s/token, 0.98 tok/s.** The repo predicted 0.1–0.2 s/token with
+the hardware FPU. Off by 5–10×.
+
+The obvious suspect was the FPU flag, and it was innocent — `-mcustom-fpu-cfg=60-2`
+is in the generated `public.mk` and the image contains 66 `custom` instructions.
+The FPU is working.
+
+The actual cause was sitting in `system.h` the whole time:
+
+```
+ALT_CPU_DCACHE_SIZE 0
+```
+
+**The core has no data cache.** All ~259,000 weight reads per token go to a
+16-bit SDRAM as individual uncached transactions — 357 ns each, measured. A
+dependent float multiply-add costs 298 ns. They add rather than overlap, and the
+real `matmul` lands at **722 ns per MAC**.
+
+Profiled at 100 MHz (after adding a timestamp timer, because the system clock
+ticks at a useless 8 Hz): `matmul` 48 % of `forward()`, `softmax` 28 %,
+everything else 22 %.
+
+And `softmax` is expensive for its own reason: `expf`, `powf` and `sqrtf` all
+call `__adddf3`/`__muldf3`/`__divdf3`. **newlib promotes them to double, and this
+core has single-precision hardware only** — so the exponentials in every softmax
+are software-emulated double precision.
+
+**Lesson:** we spent the afternoon protecting against the wrong risk. The danger
+was never the FPU flag; it was a cache line in a config file nobody read. The
+prebuilt system saved us hours *and* silently set our performance ceiling.
+
+**The honest framing for the slide:** we retire ~334 K MAC/s on fabric that could
+do ~28.8 G — about 1/86,000th of the silicon. Not because the multipliers are
+missing, but because nothing can feed them. That is the same wall a real
+accelerator hits.
+
+---
+
 ## Running themes
 
 **Look at the hardware before planning around it.** One photo invalidated hours

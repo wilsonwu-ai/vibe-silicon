@@ -1,6 +1,36 @@
 JUSTIN - START HERE
 ===================
 
+*******************************************************************************
+UPDATE 2026-08-09 14:20 -- THIS ALL WORKS NOW. RAN ON THE BOARD.
+
+  256 tokens generated on the FPGA, output byte-identical to expected_output.txt.
+  Measured 1.020 s/token (0.98 tok/s).
+
+Two things the steps below do not tell you, both discovered the hard way:
+
+  1. THE SYSTEM IS DUAL-CORE. Two Nios II, two JTAG UARTs, and no .jdi file to
+     tell them apart, so the tools refuse to connect at all until you say which:
+
+         nios2-terminal --device 1 --instance 0
+         nios2-download -c "USB-Blaster [USB-0]" --device 1 --instance 0 -g llama.elf
+
+     Without --instance you get "There are two or more Nios II CPUs...".
+
+  2. STALE OUTPUT LOOKS LIKE A BUG. A previous program keeps running after you
+     close the terminal, and its buffered bytes show up in your NEXT session --
+     the middle of an old story spliced onto a new one. Reset and drain first:
+
+         nios2-download ... -r llama.elf     # halt the old one
+         (open a throwaway nios2-terminal for 5s, close it)
+
+Good news: the linker-region trap does NOT fire on this system. nios2-bsp maps
+everything to SDRAM by itself. Verified by section address, not by dialog.
+
+Full measurements and the reason it is 1 s/token and not 0.1:
+docs/HARDWARE-RESULTS.md
+*******************************************************************************
+
 Everything you need is in this folder -- no downloads, no .bin files, nothing to
 pip install. Run the steps in order. Anything you can do before Quartus 18.1
 finishes installing is marked NOW.

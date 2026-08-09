@@ -29,17 +29,27 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 | W4 | Verilog/VHDL benchmark | ✅ ran — see [bench/FINDINGS.md](../bench/FINDINGS.md); headline **not** quotable |
 | W9 | verbatim stage claim | ⬜ drafted below, needs rehearsing |
 | W10 | screen recording | ⬜ 19:00 |
-| — | fixed-point port | ⬜ only if soft float measures slow |
+| — | fixed-point / int8 port | ⬜ **now has measured justification** — the core is memory-bound with no data cache, so fewer *bytes* is worth more than faster arithmetic. Costs bit-exactness; team decision |
+| — | hoist RoPE out of the layer loop (W5) | ⬜ the one speedup that **keeps** byte-exactness — 5 layers currently recompute identical `cos`/`sin` |
 | J1 | Quartus version | ✅ was 25.1std → Nios II absent → 18.1 installed |
 | J2 | **Quartus 18.1 working** | ✅ **done** |
 | J3 | **board alive, JTAG serial working** | ✅ **done** — board, cable, USB-Blaster driver and toolchain all confirmed |
-| J4 | Monitor Program 18.1 + stock sample printing | 🔄 **in progress** — the 14:30 gate |
-| J5 | linker regions in SDRAM | ⬜ the silent hour-loser |
-| J6–J9 | build ours, run, measure, bridge, insurance | ⬜ |
+| J4 | Monitor Program 18.1 + stock sample printing | ✅ **done** — verified e2e with the official guide demo |
+| J5 | linker regions in SDRAM | ✅ **done** — the BSP defaults are already correct for this system; verified by section *address*, not by dialog |
+| J6 | **build ours and run it** | ✅ **DONE — 256 tokens on the board, byte-identical to the golden reference** |
+| J7 | measure s/token | ✅ **done — 1.020 s/token, 0.98 tok/s** (measured, not estimated) |
+| J8–J9 | bridge to the public page, insurance | ⬜ |
 
-**The four things most likely to eat an afternoon — board, cable, driver,
-toolchain — are all cleared before 14:00.** Wilson's side is finished except for
-the talk and the recording, so the public-URL kill criterion is long satisfied.
+**The primary path is done.** The model generates all 256 tokens on the FPGA and
+the output is byte-identical to the macOS reference — there is no float
+divergence between the board and the host. The remaining work is the bridge, the
+recording, and the talk; every fallback in this document is now insurance we do
+not need.
+
+Measured, and it corrects this document: **1.020 s/token**, not the 0.1–0.2
+predicted. The hardware FPU is confirmed active — the core simply has **no data
+cache**, so every weight read hits a 16-bit SDRAM uncached. Full numbers in
+[HARDWARE-RESULTS.md](HARDWARE-RESULTS.md).
 
 ---
 
@@ -141,7 +151,8 @@ Confirmed working: the on-board USB-Blaster enumerates over USB
 | Weights | 1,056,540 bytes fp32 · ~276 KB int8 |
 | MACs / token | 259,328 (weights) + 640×(t+1) (attention) |
 | Footprint | 1.7 MB of 64 MB = **2.6%** |
-| Expected | **0.1–0.2 s/token** with hardware FPU · **0.7–3.0** on soft float — *derived, not measured* |
+| ~~Expected~~ | ~~0.1–0.2 s/token with hardware FPU — *derived*~~ — **wrong by 5–10×** |
+| **Measured** | **1.020 s/token · 0.98 tok/s** — 256 tokens in 261 s, output byte-identical to the reference. Hardware FPU confirmed active. See [HARDWARE-RESULTS.md](HARDWARE-RESULTS.md) |
 
 ---
 
@@ -260,6 +271,16 @@ Genuinely the best slide in the deck:
 - The single 16-bit SDRAM caps what you can actually stream into them
 - We used **almost none** of that — the Nios II does the math serially
 - 205 KB of on-chip RAM cannot hold a 1 MB model, so it lives in the 64 MB SDRAM
+
+**Now with the measured number, which makes the slide much stronger:** we retire
+about **334 K MAC/s**. The fabric could do ~28.8 G. We are using roughly
+**1/86,000th of the silicon in front of us**.
+
+And we know exactly why, which is the part worth saying out loud: the prebuilt
+core has **no data cache**, so every weight is fetched individually from a 16-bit
+SDRAM — 357 ns per 4-byte read, measured. The bottleneck is not arithmetic, it is
+feeding the arithmetic. That is the same wall a real accelerator hits, and it is
+why "add more multipliers" would not have saved us.
 
 Showing the gap between what the silicon *could* do and what we *did* is a stronger
 move than pretending there is no gap.
