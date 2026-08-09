@@ -30,5 +30,4 @@ Behavior on the rising edge of `clk`:
 - Else `y` holds.
 
 `y` is **not** an accumulator. Each enabled cycle replaces it with a fresh dot
-product. The eight multiplies must be signed; unpacking the bytes as unsigned is
-the failure mode to avoid.
+product.

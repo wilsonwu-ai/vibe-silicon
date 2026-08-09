@@ -42,3 +42,119 @@ Reproduce:
   iverilog -g2001 -o s bad.v tb.v && vvp s          # expect failures
   ghdl -a --std=08 ref.vhdl && ghdl -a --std=08 tb.vhdl && ghdl -e --std=08 tb && ghdl -r --std=08 tb
   ghdl -a --std=08 bad.vhdl && ghdl -e --std=08 tb && ghdl -r --std=08 tb
+
+
+UPDATE -- benchmark hardening pass, 2026-08-09 (Verilog side)
+===============================================================
+See bench/FINDINGS.md for the five bugs this pass fixes. Re-validated ref/bad
+for every task, including the new `valid_ready_mac` task, plus every
+adversarial probe under bench/tasks/*/adversarial/ (informational -- these
+were never part of the frozen 12/12 above, but they're exactly what a
+hardened testbench should now catch that it didn't before).
+
+ref/bad, Verilog side (VHDL side pending ghdl install on this machine):
+  task              impl   outcome    expected   ok
+  int8_mac          ref    PASSED     PASSED     yes
+  int8_mac          bad    failed     failed     yes
+  dot4_int8         ref    PASSED     PASSED     yes
+  dot4_int8         bad    failed     failed     yes
+  mac_array8        ref    PASSED     PASSED     yes
+  mac_array8        bad    failed     failed     yes
+  valid_ready_mac   ref    PASSED     PASSED     yes
+  valid_ready_mac   bad    failed     failed     yes
+
+  8 / 8 checks correct.
+
+Adversarial probes, before this pass -> after (bare iverilog + tb.v, no
+harness-level check involved):
+  int8_mac/acc16.v              caught (unchanged -- already caught)
+  int8_mac/asyncrst.v           SLIPPED THROUGH -> caught (added mid-cycle
+                                 reset test, mirrors mac_array8's)
+  int8_mac/ports_loose.v        still slips through bare iverilog+tb -- this
+                                 is the port-width/signedness asymmetry bug
+                                 itself (FINDINGS.md item 1). Only caught via
+                                 harness.py's new check_ports(), not by the
+                                 testbench -- verified separately by calling
+                                 grade() directly; see FINDINGS.md addendum.
+  int8_mac/ports_narrow.v       caught (unchanged -- the new >16-bit
+                                 accumulate vectors happen to also expose
+                                 this one via wrong values, independent of
+                                 check_ports())
+  int8_mac/trunc.v              caught (unchanged -- already caught)
+  dot4_int8/latch.v             SLIPPED THROUGH -> caught (added a step
+                                 where a0=0 immediately follows a step with a
+                                 different expected value, so the old
+                                 coincidence -- both steps happened to expect
+                                 0 -- can no longer mask the missing `else`)
+  dot4_int8/latch_a3.v          caught (unchanged -- already caught)
+  dot4_int8/narrow.v            caught (unchanged -- already caught)
+  dot4_int8/sens.v              SLIPPED THROUGH -> caught (added a step that
+                                 holds all four a-operands fixed while only
+                                 the b-operands change)
+  mac_array8/asyncrst.v         caught (unchanged -- already caught)
+  mac_array8/bigendian.v        SLIPPED THROUGH, and stays that way -- proven
+                                 mathematically undetectable at `y` for this
+                                 spec: it reverses BOTH a_flat and b_flat by
+                                 the same permutation, and a dot product is
+                                 invariant under simultaneously permuting both
+                                 operands the same way, for ANY input. No
+                                 vector-based fix is possible; see the note in
+                                 bigendian.v itself.
+  mac_array8/bigendian_asym.v   NEW probe, added this pass specifically to
+                                 show the *asymmetric* version of the same
+                                 mistake (only one operand reversed) IS
+                                 observable -- caught by the new case6 (both
+                                 operands vary independently per lane).
+  mac_array8/offbyone.v         caught (unchanged -- already caught)
+
+Net: 11 of 13 pre-existing adversarial probes now caught by the testbench
+itself (up from 9/13); the 12th (ports_loose.v) is caught at the harness
+level instead, by design; the 13th (bigendian.v) is not catchable by
+construction and is documented rather than silently left as a gap.
+
+VHDL side, re-run after installing GHDL 6.0.0 on this machine
+(winget: ghdl.ghdl.ucrt64.mcode) via `ghdl -a/-e/-r --std=08`:
+
+ref/bad, VHDL side:
+  task              impl   outcome    expected   ok
+  int8_mac          ref    PASSED     PASSED     yes
+  int8_mac          bad    failed     failed     yes
+  dot4_int8         ref    PASSED     PASSED     yes
+  dot4_int8         bad    failed     failed     yes
+  mac_array8        ref    PASSED     PASSED     yes
+  mac_array8        bad    failed     failed     yes
+  valid_ready_mac   ref    PASSED     PASSED     yes
+  valid_ready_mac   bad    failed     failed     yes
+
+  8 / 8 checks correct. 16 / 16 total (Verilog + VHDL) for this pass.
+
+Adversarial probes, VHDL side:
+  int8_mac/acc16.vhdl, asyncrst.vhdl, trunc.vhdl   caught (failed), same as
+                                                    their .v twins
+  int8_mac/ports_loose.vhdl,
+  int8_mac/ports_narrow.vhdl                       caught at ghdl -a/-e
+                                                    (analyze/elaborate error)
+                                                    -- ghdl was already
+                                                    strict about these; this
+                                                    is the FINDINGS.md item 1
+                                                    asymmetry from the other
+                                                    side (VHDL never needed
+                                                    check_ports() to catch
+                                                    them -- Verilog did)
+  dot4_int8/latch.vhdl, latch_a3.vhdl,
+  dot4_int8/narrow.vhdl, sens.vhdl                 caught (failed), same as
+                                                    their .v twins
+  mac_array8/asyncrst.vhdl, offbyone.vhdl,
+  mac_array8/bigendian_asym.vhdl                   caught (failed), same as
+                                                    their .v twins
+  mac_array8/bigendian.vhdl                        SLIPPED THROUGH, same as
+                                                    its .v twin -- same
+                                                    mathematical reason
+                                                    (invariant under a
+                                                    simultaneous permutation
+                                                    of both operands), not a
+                                                    language difference.
+
+Every probe now lands in the identical bucket (caught / not-catchable /
+caught-only-at-the-harness-level) in both languages -- the symmetry
+FINDINGS.md's item 1 was missing.

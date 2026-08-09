@@ -223,6 +223,14 @@ slot. Simulation is ~1 second and free.
 3. ✅ The Verilog benchmark alone, with resource/synthesis data. Ships from a
    laptop regardless of hardware — also done.
 
+## Editing the generation seed
+
+The seed is hardcoded in tools/make_baremetal.py, in the generated main() block — unsigned long long rng_seed = 42;   /* fixed: reproducible on stage */. To change it, edit that literal in the generator script, then regenerate (python tools/make_baremetal.py), copy src/run_baremetal.c to dist/llama-nios/run_baremetal.c, and rebuild via build.sh.
+
+Same rule as the LED change: edit the generator, not run_baremetal.c directly, since the .c file is generated output.
+
+One important consequence: changing the seed changes the output story, so it will no longer byte-match expected_output.txt — that file was captured at seed 42 specifically. If you change the seed you'd need a new reference to verify against (e.g. rerun the host build at the new seed and recapture it), otherwise you lose the byte-exactness check that's been the correctness proof all along.
+
 ## License
 
 MIT.

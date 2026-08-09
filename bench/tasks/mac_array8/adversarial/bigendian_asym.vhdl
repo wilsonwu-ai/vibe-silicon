@@ -1,13 +1,8 @@
 -- ADVERSARIAL PROBE (not part of the frozen bench).
--- Failure mode: the byte packing order is misread. The spec says element i is
--- at bits 8*i+7 downto 8*i (element 0 = least significant byte); this unpacks
--- the other way round, element 0 = most significant byte. Analyses and
--- elaborates clean.
---
--- UPDATE (2026-08-09, benchmark hardening pass): not actually detectable at
--- `y` by any testbench, no matter the vectors -- see the matching note in
--- bigendian.v. See bigendian_asym.vhdl for the observable (asymmetric)
--- version of this mistake.
+-- Added 2026-08-09 alongside the note in bigendian.vhdl. Failure mode: only
+-- b_flat's byte order is misread (a_flat is correct) -- an asymmetric,
+-- arguably more realistic version of the byte-order mistake. Unlike
+-- bigendian.vhdl, this one IS observable at `y`.
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -36,8 +31,8 @@ begin
             elsif en = '1' then
                 acc := (others => '0');
                 for i in 0 to 7 loop
-                    j := 7 - i;             -- BUG: big-endian by element
-                    prod := signed(a_flat(8*j + 7 downto 8*j))
+                    j := 7 - i;                 -- BUG: b_flat read big-endian
+                    prod := signed(a_flat(8*i + 7 downto 8*i))
                           * signed(b_flat(8*j + 7 downto 8*j));
                     acc := acc + resize(prod, 32);
                 end loop;

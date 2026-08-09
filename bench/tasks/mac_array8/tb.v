@@ -82,12 +82,52 @@ module tb;
       errors = errors + 1;
     end
 
+    // case 6: byte-order sensitive -- both operands vary independently per
+    // lane, so a big-endian element unpacking changes the sum
+    for (i = 0; i < 8; i = i + 1) begin av[i] = i + 1; bv[i] = 8 - i; end
+    load; @(posedge clk); #1;
+    if (y !== exp) begin
+      $display("FAIL case6 (byte order): y=%0d expected=%0d", y, exp);
+      errors = errors + 1;
+    end
+
+    // case 7: partial-sum magnitude exceeds 16 bits (8 * 127*127 = 129032),
+    // catches a truncated internal accumulator sign-extended to the port
+    for (i = 0; i < 8; i = i + 1) begin av[i] = 8'sd127; bv[i] = 8'sd127; end
+    load; @(posedge clk); #1;
+    if (y !== exp) begin
+      $display("FAIL case7 (>16-bit sum): y=%0d expected=%0d", y, exp);
+      errors = errors + 1;
+    end
+
+    // mid-cycle reset: assert rst strictly between clock edges (not
+    // synchronized to a `@(posedge clk)`), which a synchronous design must
+    // NOT react to until the following rising edge -- catches an async reset
+    for (i = 0; i < 8; i = i + 1) begin av[i] = 8'sd5; bv[i] = 8'sd5; end
+    load; en = 1; @(posedge clk); #1;
+    if (y !== exp) begin
+      $display("FAIL pre-midrst: y=%0d expected=%0d", y, exp);
+      errors = errors + 1;
+    end
+    #1 rst = 1;               // assert well inside the current clock period
+    #1;
+    if (y !== exp) begin
+      $display("FAIL rst reacted before the next clock edge (looks async): y=%0d expected=%0d (unchanged)", y, exp);
+      errors = errors + 1;
+    end
+    @(posedge clk); #1;
+    if (y !== 0) begin
+      $display("FAIL sync reset did not take effect at the next posedge: y=%0d expected 0", y);
+      errors = errors + 1;
+    end
+    rst = 0; en = 0;
+
     // en low holds
     en = 0;
     for (i = 0; i < 8; i = i + 1) begin av[i] = 8'sd9; bv[i] = 8'sd9; end
     load; @(posedge clk); #1;
-    if (y !== 8) begin
-      $display("FAIL hold with en=0: y=%0d expected 8", y);
+    if (y !== 0) begin
+      $display("FAIL hold with en=0: y=%0d expected 0", y);
       errors = errors + 1;
     end
 

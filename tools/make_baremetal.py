@@ -123,6 +123,23 @@ static void* amalloc(size_t n) {
     arena_used += n;
     return p;
 }
+
+/* -------------------------------------------------------------------- LEDs --
+ * Sign of life. The board is otherwise physically inert while it generates --
+ * the story goes out the JTAG UART to a PC, and nothing on the board moves.
+ * LEDs sit on an altera_avalon_pio at LEDS_BASE (10 bits, output only).
+ *
+ * This is a write to a memory-mapped register and nothing else. It does not
+ * touch stdout, does not touch any transformer function, and cannot change an
+ * output byte. On any non-Nios target it compiles to nothing.
+ */
+#ifdef __nios2__
+  #include "system.h"                 /* LEDS_BASE */
+  #include "altera_avalon_pio_regs.h" /* IOWR_ALTERA_AVALON_PIO_DATA */
+  static void vs_leds(unsigned v) { IOWR_ALTERA_AVALON_PIO_DATA(LEDS_BASE, v & 0x3ffu); }
+#else
+  static void vs_leds(unsigned v) { (void)v; }
+#endif
 '''
 
 # --------------------------------------------------------------------------- 2
@@ -277,6 +294,18 @@ def main() -> None:
                    ' (long)(pos-1)*100000L/ms);'),
         src)
 
+    # 7b. LEDs: one write per token, so the board shows it is alive. The site is
+    # unique -- chat() has the same three lines at 12-space indent, not 8.
+    LED_SITE = ('        safe_printf(piece); // same as printf("%s", piece), but skips "unsafe" bytes\n'
+                '        fflush(stdout);\n'
+                '        token = next;\n')
+    assert src.count(LED_SITE) == 1, "generate() LED hook site not unique"
+    src = src.replace(LED_SITE,
+        '        safe_printf(piece); // same as printf("%s", piece), but skips "unsafe" bytes\n'
+        '        fflush(stdout);\n'
+        '        vs_leds(pos);  /* SIGN OF LIFE: token counter in binary on LEDR[9:0] */\n'
+        '        token = next;\n')
+
     # generate() and chat() still malloc their token buffers
     src = src.replace("int* prompt_tokens = (int*)malloc((strlen(prompt)+3) * sizeof(int));",
                       "int* prompt_tokens = (int*)amalloc((strlen(prompt)+3) * sizeof(int));")
@@ -291,6 +320,7 @@ def main() -> None:
      * Unbuffered stdout is not cosmetic -- without it newlib buffers the whole
      * generation and the board looks dead for 30 seconds, then dumps at once. */
     setvbuf(stdout, NULL, _IONBF, 0);
+    vs_leds(0x3ff);   /* all on while the tokenizer builds -- the board is not dead */
 
     char* checkpoint_path = NULL;
     char* tokenizer_path  = NULL;
@@ -313,6 +343,7 @@ def main() -> None:
     build_sampler(&sampler, transformer.config.vocab_size, temperature, topp, rng_seed);
 
     generate(&transformer, &tokenizer, &sampler, prompt, steps);
+    vs_leds(0x3ff);   /* all on, held: generation finished cleanly */
 
     free_sampler(&sampler);
     free_tokenizer(&tokenizer);

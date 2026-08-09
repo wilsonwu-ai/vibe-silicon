@@ -1,0 +1,8 @@
+[
+  {"name": "clk", "dir": "input", "width": 1, "signed": false},
+  {"name": "rst", "dir": "input", "width": 1, "signed": false},
+  {"name": "en", "dir": "input", "width": 1, "signed": false},
+  {"name": "a_flat", "dir": "input", "width": 64, "signed": false},
+  {"name": "b_flat", "dir": "input", "width": 64, "signed": false},
+  {"name": "y", "dir": "output", "width": 32, "signed": true}
+]

@@ -152,6 +152,63 @@ begin
       errors := errors + 1;
     end if;
 
+    -- case 6: byte-order sensitive -- both operands vary independently per
+    -- lane, so a big-endian element unpacking changes the sum
+    for i in 0 to 7 loop
+      av(i) := to_signed(i + 1, 8);
+      bv(i) := to_signed(8 - i, 8);
+    end loop;
+    load;
+    wait until rising_edge(clk);
+    wait for 1 ns;
+    if y /= to_signed(exp, 32) then
+      print("FAIL case6 (byte order): y=" & img(y) & " expected=" & integer'image(exp));
+      errors := errors + 1;
+    end if;
+
+    -- case 7: partial-sum magnitude exceeds 16 bits (8 * 127*127 = 129032),
+    -- catches a truncated internal accumulator sign-extended to the port
+    for i in 0 to 7 loop
+      av(i) := to_signed(127, 8);
+      bv(i) := to_signed(127, 8);
+    end loop;
+    load;
+    wait until rising_edge(clk);
+    wait for 1 ns;
+    if y /= to_signed(exp, 32) then
+      print("FAIL case7 (>16-bit sum): y=" & img(y) & " expected=" & integer'image(exp));
+      errors := errors + 1;
+    end if;
+
+    -- mid-cycle reset: assert rst strictly between clock edges (not aligned
+    -- to a rising_edge wait), which a synchronous design must NOT react to
+    -- until the following rising edge -- catches an async reset
+    for i in 0 to 7 loop
+      av(i) := to_signed(5, 8);
+      bv(i) := to_signed(5, 8);
+    end loop;
+    load; en <= '1';
+    wait until rising_edge(clk);
+    wait for 1 ns;
+    if y /= to_signed(exp, 32) then
+      print("FAIL pre-midrst: y=" & img(y) & " expected=" & integer'image(exp));
+      errors := errors + 1;
+    end if;
+    wait for 1 ns;
+    rst <= '1';              -- assert well inside the current clock period
+    wait for 1 ns;
+    if y /= to_signed(exp, 32) then
+      print("FAIL rst reacted before the next clock edge (looks async): y=" & img(y) & " expected=" & integer'image(exp) & " (unchanged)");
+      errors := errors + 1;
+    end if;
+    wait until rising_edge(clk);
+    wait for 1 ns;
+    if y /= to_signed(0, 32) then
+      print("FAIL sync reset did not take effect at the next posedge: y=" & img(y) & " expected 0");
+      errors := errors + 1;
+    end if;
+    rst <= '0'; en <= '0';
+
     -- en low holds
     en <= '0';
     for i in 0 to 7 loop
@@ -161,8 +218,8 @@ begin
     load;
     wait until rising_edge(clk);
     wait for 1 ns;
-    if y /= to_signed(8, 32) then
-      print("FAIL hold with en=0: y=" & img(y) & " expected 8");
+    if y /= to_signed(0, 32) then
+      print("FAIL hold with en=0: y=" & img(y) & " expected 0");
       errors := errors + 1;
     end if;
 

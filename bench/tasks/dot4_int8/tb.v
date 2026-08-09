@@ -38,6 +38,17 @@ module tb;
     apply(-8'sd100, 8'sd50, -8'sd25, 8'sd12,  8'sd3, -8'sd4, 8'sd5, -8'sd6);
     apply( 8'sd1, 8'sd0, 8'sd0, 8'sd0,  -8'sd1, 8'sd0, 8'sd0, 8'sd0);
 
+    // a0=0 immediately follows a step with a *different* expected result, so
+    // a latch retaining the previous y (from an `if` with no `else`) cannot
+    // coincidentally still match -- catches incomplete-if latch inference.
+    apply( 8'sd9, 8'sd9, 8'sd9, 8'sd9,   8'sd1, 8'sd1, 8'sd1, 8'sd1);   // exp 36
+    apply( 8'sd0, 8'sd5, 8'sd5, 8'sd5,   8'sd3, 8'sd3, 8'sd3, 8'sd3);   // exp 45
+
+    // identical a-operands, only b changes -- catches a sensitivity list
+    // missing the b* inputs (the block would never re-evaluate).
+    apply( 8'sd3, 8'sd1, 8'sd4, 8'sd1,   8'sd2, 8'sd7, 8'sd1, 8'sd8);   // exp 25
+    apply( 8'sd3, 8'sd1, 8'sd4, 8'sd1,   8'sd5, 8'sd9, 8'sd2, 8'sd6);   // exp 38
+
     if (errors == 0) $display("ALL TESTS PASSED");
     else             $display("TESTS FAILED: %0d", errors);
     $finish;

@@ -130,13 +130,148 @@ _VHDL_END = re.compile(r"(?im)^[ \t]*end\b[^;\n]*;")
 def extract_vhdl(text: str) -> str:
     """Pull the entity + architecture out of the response, fenced or bare."""
     fenced = re.findall(r"```(?:vhdl|vhd|VHDL)?\s*\n(.*?)```", text, re.S)
-    body = fenced[0] if fenced else text
+    # VHDL prose commonly splits entity and architecture across two fences.
+    # Taking only fenced[0] truncates a naturally-shaped answer to an
+    # entity-only file, which passes `ghdl -a` and dies at elaborate -- a
+    # parser bug that penalizes VHDL for model competence it didn't lack.
+    # Concatenate every fenced block found, in order.
+    body = "\n".join(fenced) if fenced else text
     # Trim anything before the first library/entity and after the last `end ...;`.
     head = _VHDL_START.search(body)
     tails = list(_VHDL_END.finditer(body))
     if not head or not tails or tails[-1].end() <= head.start():
         return body.strip()
-    return body[head.start() : tails[-1].end()].strip()
+    result = body[head.start() : tails[-1].end()].strip()
+    # A design missing either half is not gradeable -- score it as no code
+    # rather than handing ghdl a doomed entity-only (or architecture-only)
+    # file that fails at a later, more expensive stage for a parser reason.
+    if not (re.search(r"(?im)^\s*entity\b", result) and
+            re.search(r"(?im)^\s*architecture\b", result)):
+        return ""
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Port-signature check.
+#
+# `iverilog` silently coerces/pads a port connection that doesn't match the
+# testbench's expectation (wrong width, unsigned where signed was asked for);
+# `ghdl` rejects the same deviation at elaborate. Same mistake, different
+# verdict per language -- and the bias runs in exactly the direction this
+# benchmark claims to measure (see bench/FINDINGS.md, "the languages are not
+# graded to the same standard"). This section adds an explicit port check to
+# BOTH languages, driven by the same `ports.json` manifest per task, so
+# neither gate depends on how forgiving its underlying toolchain happens to
+# be -- symmetry we control rather than symmetry we hope for.
+# ---------------------------------------------------------------------------
+
+_V_MODULE_HDR = re.compile(r"module\s+\w+\s*\((.*?)\)\s*;", re.S)
+_V_PORT_DECL = re.compile(
+    r"^(input|output|inout)\s+(?:reg|wire)?\s*(signed)?\s*"
+    r"(?:\[\s*(\d+)\s*:\s*(\d+)\s*\])?\s*([A-Za-z_]\w*)$"
+)
+_V_BARE_NAME = re.compile(r"^([A-Za-z_]\w*)$")
+
+
+def parse_verilog_ports(dut_text: str):
+    """Parse an ANSI-style Verilog module header into a port list, or None if
+    it can't be parsed (caller treats that as a signature failure -- fail
+    closed, not open)."""
+    m = _V_MODULE_HDR.search(dut_text)
+    if not m:
+        return None
+    body = re.sub(r"/\*.*?\*/", "", m.group(1), flags=re.S)
+    body = re.sub(r"//.*", "", body)
+    ports, cur = [], None
+    for tok in body.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        d = _V_PORT_DECL.match(tok)
+        if d:
+            width = (abs(int(d.group(3)) - int(d.group(4))) + 1) if d.group(3) else 1
+            cur = {"dir": d.group(1), "width": width, "signed": bool(d.group(2))}
+            ports.append({**cur, "name": d.group(5)})
+            continue
+        b = _V_BARE_NAME.match(tok)
+        if b and cur is not None:
+            ports.append({**cur, "name": b.group(1)})
+            continue
+        return None  # unparsable token
+    return ports
+
+
+_VHDL_ENTITY = re.compile(r"(?is)entity\s+\w+\s+is(.*?)end\s+entity")
+_VHDL_PORT_CLAUSE = re.compile(r"(?is)port\s*\((.*)\)\s*;\s*$")
+_VHDL_TYPE = re.compile(
+    r"^(in|out|inout)\s+(signed|unsigned|std_logic_vector)\s*"
+    r"\(\s*(\d+)\s+downto\s+(\d+)\s*\)$|^(in|out|inout)\s+(std_logic)$",
+    re.I,
+)
+_VHDL_DIR = {"in": "input", "out": "output", "inout": "inout"}
+
+
+def parse_vhdl_ports(dut_text: str):
+    """Parse a VHDL entity's port clause into a port list, or None if it
+    can't be parsed."""
+    ent = _VHDL_ENTITY.search(dut_text)
+    if not ent:
+        return None
+    pm = _VHDL_PORT_CLAUSE.search(ent.group(1).strip())
+    if not pm:
+        return None
+    body = re.sub(r"--.*", "", pm.group(1))
+    ports = []
+    for clause in body.split(";"):
+        clause = clause.strip()
+        if not clause:
+            continue
+        if ":" not in clause:
+            return None
+        names_part, type_part = clause.split(":", 1)
+        names = [n.strip() for n in names_part.split(",") if n.strip()]
+        t = _VHDL_TYPE.match(type_part.strip())
+        if not t or not names:
+            return None
+        if t.group(1):
+            direction = _VHDL_DIR[t.group(1).lower()]
+            signed = t.group(2).lower() == "signed"
+            width = int(t.group(3)) - int(t.group(4)) + 1
+        else:
+            direction = _VHDL_DIR[t.group(5).lower()]
+            signed, width = False, 1
+        for n in names:
+            ports.append({"name": n, "dir": direction, "width": width, "signed": signed})
+    return ports
+
+
+def check_ports(parsed, expected) -> str | None:
+    """Compare a parsed port list against `ports.json`. Returns a mismatch
+    reason, or None if they agree. Matched by name, not position -- every
+    task in this bench uses named port connections in its testbench, so
+    declaration order isn't itself a grading criterion."""
+    if parsed is None:
+        return "could not parse module/entity port header"
+    by_name = {p["name"]: p for p in parsed}
+    if len(by_name) != len(parsed):
+        return "duplicate port name in declaration"
+    for exp in expected:
+        got = by_name.get(exp["name"])
+        if got is None:
+            return f"missing port '{exp['name']}'"
+        if got["dir"] != exp["dir"]:
+            return (f"port '{exp['name']}' direction mismatch: "
+                    f"got {got['dir']}, expected {exp['dir']}")
+        if got["width"] != exp["width"]:
+            return (f"port '{exp['name']}' width mismatch: "
+                    f"got {got['width']}, expected {exp['width']}")
+        if bool(got["signed"]) != bool(exp["signed"]):
+            return (f"port '{exp['name']}' signedness mismatch: "
+                    f"got signed={got['signed']}, expected signed={exp['signed']}")
+    extra = sorted(set(by_name) - {e["name"] for e in expected})
+    if extra:
+        return f"unexpected extra port(s): {extra}"
+    return None
 
 
 def generate(client, model: str, spec: str, system: str) -> tuple[str, dict]:
@@ -181,7 +316,7 @@ def run(cmd, cwd, timeout=60):
         return 127, f"{cmd[0]} not installed"
 
 
-def grade(workdir: Path, tb: Path) -> dict:
+def grade(workdir: Path, tb: Path, expected_ports=None) -> dict:
     """Verilog: run the three tool gates. Each stage only runs if the prior one
     passed."""
     out = {"lints": False, "elaborates": False, "passes": False, "log": ""}
@@ -191,6 +326,15 @@ def grade(workdir: Path, tb: Path) -> dict:
     if not out["lints"]:
         out["log"] = f"[lint] {log}"[:2000]
         return out
+
+    # Explicit signature check -- iverilog itself will silently coerce a
+    # width/signedness mismatch instead of rejecting it. See the
+    # "Port-signature check" section above.
+    if expected_ports is not None:
+        reason = check_ports(parse_verilog_ports((workdir / "dut.v").read_text()), expected_ports)
+        if reason:
+            out["log"] = f"[sig] {reason}"[:2000]
+            return out
 
     rc, log = run(["iverilog", "-g2001", "-o", "sim", "dut.v", str(tb)], workdir)
     out["elaborates"] = rc == 0
@@ -204,7 +348,7 @@ def grade(workdir: Path, tb: Path) -> dict:
     return out
 
 
-def grade_vhdl(workdir: Path, tb: Path) -> dict:
+def grade_vhdl(workdir: Path, tb: Path, expected_ports=None) -> dict:
     """VHDL: the same three gates through ghdl.
 
     Runs in a private temp directory, which is not optional. `ghdl -a` writes
@@ -226,6 +370,17 @@ def grade_vhdl(workdir: Path, tb: Path) -> dict:
         if not out["lints"]:
             out["log"] = f"[lint] {log}"[:2000]
             return out
+
+        # Explicit signature check, mirroring the Verilog side above -- ghdl
+        # already rejects most of these at elaborate, but running the same
+        # manifest-driven check on both languages means the symmetry is ours
+        # by construction, not a side effect of one toolchain being stricter
+        # than the other.
+        if expected_ports is not None:
+            reason = check_ports(parse_vhdl_ports((wd / "dut.vhdl").read_text()), expected_ports)
+            if reason:
+                out["log"] = f"[sig] {reason}"[:2000]
+                return out
 
         # Elaborate = analyse the testbench, then bind it to the DUT. Wrong
         # entity name, wrong port names, wrong port types all surface here,
@@ -514,6 +669,11 @@ def main():
     tally = {}
 
     for task in tasks:
+        ports_path = task / "ports.json"
+        expected_ports = json.loads(ports_path.read_text()) if ports_path.exists() else None
+        if expected_ports is None:
+            print(f"  {task.name} ... no ports.json, signature check disabled for this task")
+
         for lang in langs:
             cfg = LANGS[lang]
             spec_path = task / cfg["spec"]
@@ -540,7 +700,7 @@ def main():
                     code = cfg["extract"](text) if text else ""
                     (workdir / cfg["dut"]).write_text(code)
                     res = (
-                        cfg["grade"](workdir, tb)
+                        cfg["grade"](workdir, tb, expected_ports)
                         if code
                         else {
                             "lints": False,

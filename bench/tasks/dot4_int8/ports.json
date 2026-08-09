@@ -1,0 +1,11 @@
+[
+  {"name": "a0", "dir": "input", "width": 8, "signed": true},
+  {"name": "a1", "dir": "input", "width": 8, "signed": true},
+  {"name": "a2", "dir": "input", "width": 8, "signed": true},
+  {"name": "a3", "dir": "input", "width": 8, "signed": true},
+  {"name": "b0", "dir": "input", "width": 8, "signed": true},
+  {"name": "b1", "dir": "input", "width": 8, "signed": true},
+  {"name": "b2", "dir": "input", "width": 8, "signed": true},
+  {"name": "b3", "dir": "input", "width": 8, "signed": true},
+  {"name": "y", "dir": "output", "width": 20, "signed": true}
+]

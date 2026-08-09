@@ -1,0 +1,11 @@
+[
+  {"name": "clk", "dir": "input", "width": 1, "signed": false},
+  {"name": "rst", "dir": "input", "width": 1, "signed": false},
+  {"name": "in_valid", "dir": "input", "width": 1, "signed": false},
+  {"name": "in_ready", "dir": "output", "width": 1, "signed": false},
+  {"name": "a", "dir": "input", "width": 8, "signed": true},
+  {"name": "b", "dir": "input", "width": 8, "signed": true},
+  {"name": "out_valid", "dir": "output", "width": 1, "signed": false},
+  {"name": "out_ready", "dir": "input", "width": 1, "signed": false},
+  {"name": "y", "dir": "output", "width": 32, "signed": true}
+]

@@ -63,6 +63,17 @@ begin
         apply(-100,  50, -25,  12,     3,  -4,   5,  -6);
         apply(   1,   0,   0,   0,    -1,   0,   0,   0);
 
+        -- a0=0 immediately follows a step with a *different* expected
+        -- result, so a latch retaining the previous y (an incomplete `if`
+        -- with no `else`) cannot coincidentally still match.
+        apply(   9,   9,   9,   9,     1,   1,   1,   1);   -- exp 36
+        apply(   0,   5,   5,   5,     3,   3,   3,   3);   -- exp 45
+
+        -- identical a-operands, only b changes -- catches a process
+        -- sensitivity list missing the b* signals.
+        apply(   3,   1,   4,   1,     2,   7,   1,   8);   -- exp 25
+        apply(   3,   1,   4,   1,     5,   9,   2,   6);   -- exp 38
+
         if errors = 0 then
             write(l, string'("ALL TESTS PASSED"));
         else
