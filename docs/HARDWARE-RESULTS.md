@@ -129,10 +129,35 @@ than anything that increases arithmetic throughput.
 and this core has single-precision hardware only — so every one of those is
 software emulation.
 
-That is why `softmax` costs 28 % of `forward()` while doing only ~1,150
-exponentials per token, and it is why RoPE shows up in "everything else":
-upstream calls `powf` **160 times per token** (`dim/2 × n_layers`), recomputing
-values that depend only on `i`.
+Per-call cost, measured directly (20,000 calls each, `bsp/bench/bench2.c`):
+
+| call | ns/call | cycles @ 100 MHz |
+|---|---|---|
+| baseline loop overhead | 1,730 | 173 |
+| float multiply | 1,871 | 187 |
+| float divide | 2,953 | 295 |
+| `sqrtf` | 8,907 | 890 |
+| `sinf` | 58,323 | 5,832 |
+| `cosf` | 68,981 | 6,898 |
+| `expf` | 73,113 | 7,311 |
+| **`powf`** | **316,833** | **31,683** |
+
+`powf` costs **100× a plain float multiply**. That single number explains both
+of the non-`matmul` costs:
+
+- **`softmax` (28 % of `forward()`, ~107 ms/token):** implies ~1,463 `expf`
+  calls/token, consistent with a vocab-512 softmax plus one softmax per
+  attention head per layer.
+- **RoPE, inside "everything else":** upstream calls `powf` **160 times per
+  token** (`dim/2 × n_layers` = 32 × 5) to compute `cos`/`sin` angles that
+  depend only on `(pos, i)`, not on layer. At 317 µs/call that is **50.7 ms of
+  every token spent recomputing 128 values that do not change.**
+
+  Hoisting the table to 32 calls (`dim/2`, computed once, reused across all 5
+  layers) costs 10.1 ms/token instead of 50.7 — **saves ~40.6 ms/token, ~4 %
+  of the 1.02 s total, for zero change to a single output byte.** This is the
+  cheapest and only completely-free optimisation available, and it is already
+  W5 in the PRD backlog.
 
 ---
 
