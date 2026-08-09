@@ -1,8 +1,7 @@
 # vibe-silicon
 
 **We programmed a soft CPU into an FPGA's fabric and ran a language model on it.**
-No ARM. No operating system. The processor is Intel's prebuilt Nios II core — not
-designed by us, and not LLM-written. See
+No ARM. No operating system. The processor is based on Intel's prebuilt Nios II core — See
 [what's ours, what's Intel's, and what's LLM-written](#whats-ours-whats-intels-and-whats-llm-written)
 below before repeating any claim from this README on stage.
 
