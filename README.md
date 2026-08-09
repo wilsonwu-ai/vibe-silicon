@@ -6,6 +6,12 @@ Verilog was written by an LLM.
 
 Sundai Hack 135 — Foundation Models for the Physical World (Aug 9, 2026)
 
+### ▶ Live demo — **https://vibe-silicon.wilson-af8.workers.dev**
+
+Streams tokens from the board as they are generated. When the board is not
+running it plays the verified host output instead, **labelled as a recording** —
+the page never claims a replay is live.
+
 ---
 
 > **Hardware correction, 2026-08-09 midday.** This repo originally targeted a

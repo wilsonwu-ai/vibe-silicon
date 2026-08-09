@@ -21,6 +21,47 @@ into an FPGA, with LLM-written Verilog benchmarked alongside it.
 
 ---
 
+## Status — updated 12:38, Sunday
+
+| | item | state |
+|---|---|---|
+| W1 | embedded model artifacts | ✅ done — byte counts verified |
+| W2 | golden reference output | ✅ done — md5 `8e6e99ed83fc476e1a33bc0940ecffa1` |
+| W3 | `run_baremetal.c` | ✅ done — **byte-identical to upstream**, tarball handed over |
+| W6 | tarball for Justin | ✅ done — `dist/llama-nios/` + zip in Discord |
+| W7 | public webapp | ✅ **live** — https://vibe-silicon.wilson-af8.workers.dev |
+| W8 | `bridge.py` | ✅ done — verified end to end, 575 chars through the real path |
+| W4/W5 | unbuffered stdout, RoPE table | ✅ folded into W3 |
+| W9 | verbatim stage claim | ⬜ written below, needs rehearsing |
+| W10 | screen recording | ⬜ 19:00 |
+| — | fixed-point port | ⬜ only if soft float measures slow |
+| J1 | Quartus version | ✅ **25.1std Lite → Nios II absent**, 18.1 required |
+| J2 | Quartus 18.1 install | 🔄 **downloading** |
+| J3 | board alive, `jtagconfig`, driver | ⬜ **do this now, during the download** |
+| J4 | stock sample printing over JTAG | ⬜ the 14:30 gate |
+| J5–J9 | build, run, measure, bridge, insurance | ⬜ blocked on J2 |
+
+**Not blocked.** Everything on Wilson's side that does not need hardware is
+finished, including the deployed webapp — so the 15:30 public-URL kill criterion
+is already satisfied regardless of what the board does.
+
+### While 18.1 downloads
+
+J3 needs **no Nios II at all**. The Programmer works in every Quartus version,
+including the 25.1 already installed. So right now, without waiting:
+
+```
+jtagconfig                     # must list the 10M50
+```
+
+then open **Programmer** in 25.1 and load any prebuilt Terasic demo `.sof` from
+the DE10-Lite System CD. That proves board, cable, and USB-Blaster driver
+independently of the toolchain. The driver install is the classic 20-minute
+surprise and it lives under `<quartus>\drivers` — finding it now instead of at
+15:00 is worth an hour.
+
+---
+
 ## The one-sentence product
 
 > The board has no processor. We put one there, gave it a language model, and it
