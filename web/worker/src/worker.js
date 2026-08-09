@@ -232,6 +232,31 @@ font-size:clamp(17px,2.3vw,24px);line-height:1.65;white-space:pre-wrap;word-wrap
 .note b{color:var(--fg)}
 a{color:var(--cyan)}
 footer{margin-top:26px;color:var(--dim);font-size:13px;line-height:1.8;border-top:1px solid var(--line);padding-top:18px}
+
+/* ---- presentation mode: readable from the back of a room ---- */
+body.present .wrap{ max-width:1700px; padding:18px 34px 24px }
+body.present h1{ font-size:clamp(30px,3.4vw,52px); margin-bottom:4px }
+body.present .sub{ font-size:clamp(14px,1.25vw,20px); margin-bottom:14px; max-width:none }
+body.present .note{ display:none }
+body.present footer{ margin-top:14px; font-size:13px }
+body.present .chip{ font-size:15px; padding:9px 16px }
+body.present #out{
+  font-size:clamp(26px,2.55vw,44px); line-height:1.5;
+  min-height:52vh; padding:30px 36px;
+}
+body.present .card .v{ font-size:30px }
+body.present .card .k{ font-size:12px }
+body.present #cursor{ width:.55em; height:1.05em }
+/* The nios2-terminal banner is EVIDENCE -- it names a physical USB-Blaster and
+   proves this is real silicon, not a simulator. Keep it visible, but demote it
+   so it does not compete with the model's own words on a projector. */
+.sysline{ display:block; font-family:var(--mono); color:var(--dim);
+  font-size:.52em; line-height:1.5; opacity:.75 }
+.sysline.first{ margin-top:0 }
+#presentHint{
+  position:fixed; right:14px; bottom:12px; font-size:12px; color:var(--dim);
+  font-family:var(--mono); opacity:.55; pointer-events:none;
+}
 </style></head><body><div class="wrap">
 <h1>A language model running on an <em>FPGA</em></h1>
 <p class="sub">Karpathy's <code>llama2.c</code> &mdash; math unmodified &mdash; on a Nios&nbsp;II soft core
@@ -268,6 +293,7 @@ Justin Pacella &middot; <a href="https://www.linkedin.com/in/jtp75/">LinkedIn</a
 Wilson Wu &middot; <a href="https://www.linkedin.com/in/wilson1wu/">LinkedIn</a> &middot; <a href="https://github.com/wilsonwu-ai">@wilsonwu-ai</a><br>
 Source: <a href="https://github.com/wilsonwu-ai/vibe-silicon">github.com/wilsonwu-ai/vibe-silicon</a> (MIT)
 </footer>
+<div id="presentHint">P present &middot; F fullscreen</div>
 </div>
 <script>
 var REPLAY = ${JSON.stringify(REPLAY)};
@@ -291,19 +317,45 @@ function tick(){
 }
 setInterval(tick, 200);
 
+var rawBuf = '';
+function esc(x){ return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Split nios2-terminal's own chatter from the model's output. The banner stays
+// on screen as proof of hardware -- it names a physical USB-Blaster, which a
+// simulator cannot do -- just smaller and dimmer so it does not compete.
+// NOTE: no regular expressions and no backslash escapes in here. This whole
+// page is a JS template literal inside worker.js, and the template literal
+// consumes backslashes before the browser sees them. Cost us one broken deploy.
+var CR = String.fromCharCode(13), LF = String.fromCharCode(10);
+function render(){
+  var lines = rawBuf.split(CR + LF).join(LF).split(LF);
+  var head = '', body = [], stillHead = true;
+  for (var i = 0; i < lines.length; i++){
+    var ln = lines[i];
+    if (stillHead && ln.indexOf('nios2-terminal:') === 0){
+      head += '<span class="sysline' + (head ? '' : ' first') + '">' + esc(ln) + '</span>';
+    } else if (stillHead && ln.trim() === ''){
+      continue;                      // blank lines between banner and story
+    } else {
+      stillHead = false;
+      body.push(ln);
+    }
+  }
+  el.text.innerHTML = head + esc(body.join(LF));
+}
 function append(t){
   if(!t) return;
   if(!started) started = Date.now();
   lastRx = Date.now(); frozenMs = null;
   chars += t.length;
-  el.text.textContent += t;
+  rawBuf += t;
+  render();
   window.scrollTo(0, document.body.scrollHeight);
 }
 function goLive(){
   if(live) return;
   live = true;
   if(replayTimer){ clearInterval(replayTimer); replayTimer=null; }
-  el.text.textContent=''; chars=0; started=Date.now(); frozenMs=null;
+  rawBuf=''; el.text.innerHTML=''; chars=0; started=Date.now(); frozenMs=null;
   paintSrc();
 }
 // The page cannot tell where ingested bytes came from, so the bridge declares
@@ -319,11 +371,11 @@ function paintSrc(){
 function startReplay(){
   if(live || replayTimer) return;
   setStatus('replay','replay \\u00b7 verified host output');
-  el.text.textContent=''; chars=0; started=Date.now();
+  rawBuf=''; el.text.innerHTML=''; chars=0; started=Date.now();
   var i=0;
   replayTimer = setInterval(function(){
     if(live){ clearInterval(replayTimer); replayTimer=null; return; }
-    if(i>=REPLAY.length){ i=0; el.text.textContent=''; chars=0; started=Date.now(); return; }
+    if(i>=REPLAY.length){ i=0; rawBuf=''; el.text.innerHTML=''; chars=0; started=Date.now(); return; }
     var n = 1 + Math.floor(Math.random()*3);
     append(REPLAY.slice(i, i+n)); i+=n;
   }, 90);
@@ -335,7 +387,7 @@ function connect(){
   es.addEventListener('seed', function(ev){
     var d = JSON.parse(ev.data);
     at = (d.text||'').length;
-    if(d.text){ srcMode = d.src || 'board'; goLive(); el.text.textContent = d.text;
+    if(d.text){ srcMode = d.src || 'board'; goLive(); rawBuf = d.text; render();
                 chars = d.text.length; started = d.startedAt || Date.now();
                 lastRx = d.lastAt || Date.now(); paintSrc(); }
     else { startReplay(); }
@@ -345,7 +397,7 @@ function connect(){
     if(d.src) srcMode = d.src;
     goLive(); paintSrc(); append(d.text); at += (d.text||'').length;
   });
-  es.addEventListener('reset', function(){ live=false; el.text.textContent=''; chars=0; at=0; startReplay(); });
+  es.addEventListener('reset', function(){ live=false; rawBuf=''; el.text.innerHTML=''; chars=0; at=0; startReplay(); });
   es.onerror = function(){ setStatus('wait','reconnecting'); };
 }
 // Polling fallback, in case something between here and the edge eats SSE.
@@ -356,6 +408,28 @@ function pollLoop(){
     }).catch(function(){});
   }, 400);
 }
+// Presentation mode. Same URL -- ?present=1, or press P. Kept as a class on
+// body so nothing about the data path changes; this is purely type size.
+function setPresent(on){
+  document.body.classList.toggle('present', !!on);
+  try{
+    var u = new URL(location.href);
+    if(on) u.searchParams.set('present','1'); else u.searchParams.delete('present');
+    history.replaceState(null,'',u);
+  }catch(e){}
+}
+if(new URLSearchParams(location.search).get('present')==='1') setPresent(true);
+
+document.addEventListener('keydown', function(e){
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  var k=(e.key||'').toLowerCase();
+  if(k==='p'){ setPresent(!document.body.classList.contains('present')); }
+  if(k==='f'){
+    if(document.fullscreenElement) document.exitFullscreen();
+    else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  }
+});
+
 connect();
 setTimeout(function(){ if(!live) startReplay(); }, 1200);
 </script></body></html>`;
