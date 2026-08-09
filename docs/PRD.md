@@ -1,7 +1,7 @@
 # PRD — vibe-silicon
 
-**Product:** A language model running on a processor we synthesized into an FPGA,
-with the Verilog written by an LLM and its quality measured.
+**Product:** A language model running bare metal on a soft processor we programmed
+into an FPGA, with LLM-written Verilog benchmarked alongside it.
 
 **Event:** Sundai Hack 135 — Foundation Models for the Physical World
 **Date:** Sunday, August 9 2026 · Boston
@@ -23,14 +23,15 @@ with the Verilog written by an LLM and its quality measured.
 
 ## The one-sentence product
 
-> The board has no processor. We put one there, taught it to read, and it wrote a
-> story.
+> The board has no processor. We put one there, gave it a language model, and it
+> wrote a story.
 
 ## Why anyone should care
 
 Everyone demos a model running on someone else's silicon. We are demoing a model
-running on silicon we configured ourselves — no ARM core, no operating system, no
-vendor CPU. And the hardware description was written by an LLM, which we grade.
+running on a processor that did not exist until we configured it into fabric — no
+ARM, no operating system, no filesystem. And separately, we grade how well LLMs
+write the Verilog such a machine is made of.
 
 ---
 
@@ -52,7 +53,7 @@ entire split below.
    Wilson (macOS, M4 Max)                     Justin (PC, Quartus)
    ───────────────────────                    ─────────────────────
    C code + embedded model  ──── git ────►    compiles for the soft core
-   Verilog from LLMs        ──── git ────►    synthesizes onto the FPGA
+   Verilog from LLMs        ──── git ────►    programs + compiles for the board
    benchmark harness                          board + JTAG
    web app + tunnel         ◄─── LAN ─────    token stream out of the board
 ```
@@ -65,7 +66,7 @@ entire split below.
 
 ### In scope
 
-1. A soft RISC-V core (NEORV32) synthesized onto the MAX 10, wired to the 64 MB SDRAM.
+1. The prebuilt **DE10-Lite Computer** (Nios II/f + FPU + SDRAM controller + JTAG UART) programmed onto the MAX 10.
 2. `stories260K` compiled for that core, weights embedded in the binary.
 3. Tokens streaming out over JTAG and onto a public web page.
 4. A benchmark of LLM-written Verilog: lint → simulate → testbench → synthesize.
@@ -77,7 +78,8 @@ entire split below.
 | `stories15M` | 97 MB fp32 vs 64 MB SDRAM. Does not fit. |
 | `adam-maj/tiny-gpu` | 256-byte memory, simulation-only, no C compiler. See [WHY-KARPATHY.md](WHY-KARPATHY.md) |
 | `deaneeth/tiny-gpu` | A Python simulator. Not hardware. |
-| Nios V/m | Base RV32I only — no hardware multiply. Wrong tool. |
+| Building an SoC in Platform Designer | Unnecessary — a prebuilt, pre-verified one exists. |
+| NEORV32 / Nios V/m | Superseded by the prebuilt image. Nios V/m is RV32I only anyway — no hardware multiply. |
 | Training anything | The hack's own brief says start from a pretrained model. |
 | Wilson programming the board | Impossible on macOS. |
 
@@ -112,7 +114,7 @@ Confirmed working: the on-board USB-Blaster enumerates over USB
 | Weights | 1,056,540 bytes fp32 · ~276 KB int8 |
 | MACs / token | 259,328 (weights) + 640×(t+1) (attention) |
 | Footprint | 1.7 MB of 64 MB = **2.6%** |
-| Expected | **0.1 – 3.0 s/token** depending on core config |
+| Expected | **0.1–0.2 s/token** with hardware FPU · **0.7–3.0** on soft float — *derived, not measured* |
 
 ---
 
