@@ -229,12 +229,53 @@ On-chip SRAM is at `0x08000000` and nothing is placed there.
 
 ---
 
+## The objcopy fallback path: also validated, with a new trap found
+
+`JUSTIN-START-HERE.txt` ships an appendix for linking the raw `.bin` files
+instead of the headers. It had never actually been run — the `.bin` files are
+gitignored and were never in the package, so the path existed only on paper.
+Ran it for real on 2026-08-09: **256 tokens, byte-identical to the reference,
+via `model.o`/`tok.o` linked as objects instead of `model260k.h`/`tok512.h`
+included as arrays.** Both build paths now produce verified-identical output.
+
+It needed three fixes, not two:
+
+1. **Bare filenames.** As documented — `objcopy` derives the symbol name from
+   the path given, so `models/stories260K.bin` links as
+   `_binary_models_stories260K_bin_start`, not the name the code expects.
+2. **Alignment.** As documented — `objcopy` promises nothing about alignment,
+   and the code casts the blob to `float*`. The `.h` arrays are
+   `__attribute__((aligned(8)))`; a raw `objcopy` blob is not.
+3. **New: global-pointer overflow.** Linking `model.o` + `tok.o` as separate
+   objects failed with:
+
+   ```
+   Unable to reach (null) ... from the global pointer ...
+   because the offset (1037432) is out of the allowed range, -32678 to 32767
+   ```
+
+   The BSP default is `-mgpopt=global` (`hal.make.cflags_mgpopt`), and the
+   prebuilt `libhal_bsp.a` was itself compiled assuming it. Recompiling only
+   `run_baremetal.c` with `-mgpopt=none` is not enough — the library object
+   still assumes GP-relative reach. Fix: regenerate the whole BSP with
+   `--set hal.make.cflags_mgpopt -mgpopt=none`, then compile and link
+   everything, app included, against that BSP. This did **not** happen on the
+   header build — one translation unit the compiler already accounts for
+   behaves differently from two extra linked objects.
+
+Also confirmed: a bare `nios2-elf-gcc run_baremetal.c model.o tok.o -o llama.elf
+-lm`, exactly as an earlier version of the appendix showed it, links but is
+**not bootable** — no system linker script, no `crt0`, no JTAG-UART stdio
+wiring, for the same reason Step 4 already explains about the `.h` path. The
+working command carries `-T linker.x -msys-crt0=... -msys-lib=hal_bsp` and
+matches the BSP's own generated link line; the appendix now shows it in full.
+
 ## Corrections to other pages
 
-- **`stories260K.bin` / `tok512.bin` do not exist and are not needed.** The
-  build takes `model260k.h` / `tok512.h` directly. Any instruction sheet still
-  listing two `nios2-elf-objcopy` commands describes a build that cannot run —
-  the `.bin` files are gitignored and were never in the package.
+- **`stories260K.bin` / `tok512.bin` are not needed for the primary build.**
+  `dist/llama-nios/` ships `model260k.h`/`tok512.h`; that is the path to use.
+  The objcopy route above works too, now that it has actually been run, but it
+  needs a rebuilt BSP and is strictly more work for the same result.
 - **The usable SDRAM linker region is ~32 MiB, not 64 MiB.** `system.h` reports
   `SDRAM_SPAN 67108864`, but the generated region is
   `SDRAM : ORIGIN = 0x20, LENGTH = 33554400`. Irrelevant at our 1.9 MB, worth
