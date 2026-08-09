@@ -19,6 +19,10 @@ Sundai Hack 135 — Foundation Models for the Physical World (Aug 9, 2026)
 
 ### ▶ Live demo — **https://vibe-silicon.wilson-af8.workers.dev**
 
+**Verified end to end on real hardware.** The page has received the full 256-token
+story straight off the board over JTAG, byte-identical to the reference
+(md5 `8e6e99ed83fc476e1a33bc0940ecffa1`). Evidence: [docs/E2E-VERIFIED.md](docs/E2E-VERIFIED.md)
+
 Streams tokens from the board as they are generated. When the board is not
 running it plays the verified host output instead, **labelled as a recording** —
 the page never claims a replay is live.
@@ -168,6 +172,7 @@ docs/       GLOSSARY.md, ELI5.md, LOG.md, PRD.md, WHY-KARPATHY.md, HANDOFF.md
 | **[docs/HARDWARE-RESULTS.md](docs/HARDWARE-RESULTS.md)** | **what the board actually did, measured — speed, profile, and why it is 1 s/token** |
 | **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | **every term and acronym, for readers new to hardware — start here** |
 | **[docs/TALK.md](docs/TALK.md)** | **what to say at 8pm — 30-second and 3-minute versions, with the numbers** |
+| [docs/E2E-VERIFIED.md](docs/E2E-VERIFIED.md) | proof the public page is fed by real silicon, not a simulator |
 | [docs/LOG.md](docs/LOG.md) | play-by-play of the day, including the wrong turns |
 | [bench/FINDINGS.md](bench/FINDINGS.md) | benchmark results — and why the headline number should not be quoted |
 | [docs/TERNARY.md](docs/TERNARY.md) | Eugene's suggestion: make the multiplier disappear. The best idea we did **not** ship |
